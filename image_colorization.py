@@ -46,10 +46,12 @@ class ECCVImage:
         # Should take an image path instead
 
         black_image_norm = black_image * (100 / 255)
-        self.luminance_256 = resize_image(
-            black_image_norm, size=(256, 256)
-        )  # (1,1,256,256)
-        self.luminance_64 = resize_image(black_image_norm, size=(64, 64))
+        self.luminance_256 = np.clip(
+            resize_image(black_image_norm, size=(256, 256)), 0, 100
+        )  # (1,1,256,256), on clip car en resizant on a parfois une interpolation qui depasse 100 ou 0
+        self.luminance_64 = np.clip(
+            resize_image(black_image_norm, size=(64, 64)), 0, 100
+        )
         # we have to define chrominance channels
 
         self.process_EECV()
@@ -106,17 +108,46 @@ class LoriaImageColorization(ECCVImage):
         self.dip_input = (
             torch.tensor(np.random.normal(size=(1, 32, 256, 256))).type(DTYPE).detach()
         )
+        self.target_normalized_init()
+
         self.loss_fn = torch.nn.MSELoss()
 
-    def closure(self):
+    def target_normalized_init(self):
+        # on normalise la luminance
+        l_to_01 = self.luminance_64[None, None, :] / 100
+        # on normalise les chrominances
+        ab_to_01 = BASE_COLOR.ab_128_to_01(self.chrom_mean_unnorm[None, :])
+        target_to_01 = torch.cat((l_to_01, ab_to_01), dim=1)
+        self.target_dip = target_to_01
+        return
+
+    def closure(self, num_iter_active):
         # déinir
+        print(num_iter_active)
         out = self.dip_net(self.dip_input)
-        print(out.shape)
-        total_loss = self.loss_fn(out, self.output_upsampled)
-        total_loss.backward(retain_graph=True)
+        if num_iter_active % 2 == 0:
+            # on prend les chrominances
+            out_chr = out[:, 1:, :]
+            # on les passe de [0,1] à [-128,128]
+            out_chr_unnorm = BASE_COLOR.ab_01_to_128(out_chr)
+            image_cat = torch.cat(
+                (
+                    self.luminance_256[None, None, :],
+                    out_chr_unnorm,
+                ),
+                dim=1,
+            )
+            rgb256 = kornia.color.lab_to_rgb(image_cat)
+            plt.imsave(
+                f"output/{num_iter_active}.png",
+                rgb256[0, :].permute(1, 2, 0).detach().numpy(),
+            )
+        total_loss = self.loss_fn(self.downsampler(out), self.target_dip)
         print(total_loss.item())
+        total_loss.backward(retain_graph=True)
+
         return total_loss
 
     def optimization(self):
         parameters = get_params("net", self.dip_net, self.dip_input)
-        optimize(parameters, self.closure, 1, 10)
+        optimize(parameters, self.closure, 0.05, 100)

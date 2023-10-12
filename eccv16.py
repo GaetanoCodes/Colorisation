@@ -12,7 +12,7 @@ class BaseColor(nn.Module):
     def __init__(self):
         super(BaseColor, self).__init__()
 
-        self.l_cent = 50.0
+        self.l_cent = 50
         self.l_norm = 100.0
         self.ab_norm = 128.0
 
@@ -27,6 +27,12 @@ class BaseColor(nn.Module):
 
     def unnormalize_ab(self, in_ab):
         return in_ab * self.ab_norm
+
+    def ab_128_to_01(self, in_ab):
+        return (in_ab + self.ab_norm) / (2 * self.ab_norm)
+
+    def ab_01_to_128(self, in_ab):
+        return in_ab * (2 * self.ab_norm) - self.ab_norm
 
 
 class ECCVGenerator(BaseColor):
