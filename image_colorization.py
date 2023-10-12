@@ -12,7 +12,8 @@ from copy import deepcopy
 import kornia
 import matplotlib.pyplot as plt
 
-
+# TODO : qq chose ne va pas dans la proje ou dans l'affichage de la proj
+# prévenir frederic et fabien
 GPU = False
 if GPU:
     DTYPE = torch.cuda.Floattensor
@@ -63,6 +64,7 @@ class ECCVImage:
     def process_EECV(self):
         """Recupère l'output de ECCV et postprocess"""
         self.proba_distrib = COLORIZER(self.luminance_256[None, None, :])
+        print(self.proba_distrib.shape)
         self.proba_chrom_norm = torch.einsum("abcd,bn->nbcd", self.proba_distrib, COEFS)
         self.proba_chrom_unnorm = BASE_COLOR.unnormalize_ab(self.proba_chrom_norm)
         self.chrom_mean_unnorm = self.proba_chrom_unnorm.sum(axis=1)  # (2,64,64)
@@ -127,7 +129,7 @@ class LoriaImageColorization(ECCVImage):
         out = self.dip_net(self.dip_input)
         if num_iter_active % 2 == 0:
             # on prend les chrominances
-            out_chr = out[:, 1:, :]
+            out_chr = out[:, 1:, :].clone()
             # on les passe de [0,1] à [-128,128]
             out_chr_unnorm = BASE_COLOR.ab_01_to_128(out_chr)
             image_cat = torch.cat(
@@ -142,7 +144,31 @@ class LoriaImageColorization(ECCVImage):
                 f"output/{num_iter_active}.png",
                 rgb256[0, :].permute(1, 2, 0).detach().numpy(),
             )
-        total_loss = self.loss_fn(self.downsampler(out), self.target_dip)
+            # projection
+            out_64 = self.downsampler(out)
+            print(out_64[0, 1:, :].min(), out_64[0, 1:, :].max())
+
+            out_64[:, 0, :, :] = self.luminance_64[None, :]
+            print(out_64.shape)
+            projected = self.projection_chrom(out_64)
+            print(projected[0, 1:, :].min(), projected[0, 1:, :].max())
+            projected_rgb = kornia.color.lab_to_rgb(projected)
+            plt.imsave(
+                f"output/{num_iter_active}_proj.png",
+                projected_rgb[0, :].permute(1, 2, 0).detach().numpy(),
+            )
+            # luminance fixee
+            image_cat_lum_fixed = image_cat
+            image_cat_lum_fixed[:, 0, :] = 0 * image_cat_lum_fixed[:, 0, :] + 0.7
+            image_cat_lum_fixed_rgb = kornia.color.lab_to_rgb(image_cat_lum_fixed)
+            ##
+            plt.imsave(
+                f"output/{num_iter_active}_lum.png",
+                image_cat_lum_fixed_rgb[0, :].permute(1, 2, 0).detach().numpy(),
+            )
+        total_loss = self.loss_coupled_tv(
+            out
+        )  # self.loss_fn(self.downsampler(out), self.target_dip)
         print(total_loss.item())
         total_loss.backward(retain_graph=True)
 
@@ -151,3 +177,49 @@ class LoriaImageColorization(ECCVImage):
     def optimization(self):
         parameters = get_params("net", self.dip_net, self.dip_input)
         optimize(parameters, self.closure, 0.05, 100)
+
+    def loss_coupled_tv(self, out, gamma=80):
+        # Coupled TV
+        delta_horiz = (out[:, :, 1:, :] - out[:, :, :-1, :]) ** 2
+        delta_horiz = delta_horiz[:, :, :, :-1]
+        delta_vert = (out[:, :, :, 1:] - out[:, :, :, :-1]) ** 2
+        delta_vert = delta_vert[:, :, :-1, :]
+
+        delta = delta_horiz + delta_vert
+        delta[:, 0, :] = gamma * delta[:, 0, :]
+        epsilon = 0.00001
+        coupled_tv = 0.000005 * torch.sum(torch.pow(epsilon + delta, 0.5))
+        # Norme L2
+        l2 = self.loss_fn(self.downsampler(out), self.target_dip)
+
+        return coupled_tv + l2
+
+    def projection_chrom(self, image, k=5):
+        ##
+        coefs_to_128 = 0.5 * (COEFS + 1)  # entre 0 et 1
+        coefs_a = coefs_to_128[:, 0]
+        coefs_b = coefs_to_128[:, 1]
+        coefs_a = coefs_a[None, :, None, None] * torch.ones(1, 313, 64, 64)
+        coefs_b = coefs_b[None, :, None, None] * torch.ones(1, 313, 64, 64)
+
+        print(coefs_a.shape, image[0, 1, :].shape)
+
+        ind_max_a = torch.argmax(torch.abs(coefs_a - image[0, 1, :]), dim=1)
+        ind_max_b = torch.argmax(torch.abs(coefs_b - image[0, 1, :]), dim=1)
+
+        projected_chrm_a = torch.gather(coefs_a, 1, ind_max_a.unsqueeze(2)).squeeze(2)
+        projected_chrm_b = torch.gather(coefs_b, 1, ind_max_b.unsqueeze(2)).squeeze(2)
+
+        print(
+            "Projection",
+            projected_chrm_a[0, 1:, :].min(),
+            projected_chrm_a[0, 1:, :].max(),
+        )
+
+        ##
+
+        projected = image.clone()
+        projected[:, 1, :, :] = BASE_COLOR.ab_01_to_128(projected_chrm_a)
+        projected[:, 2, :, :] = BASE_COLOR.ab_01_to_128(projected_chrm_b)
+
+        return projected
