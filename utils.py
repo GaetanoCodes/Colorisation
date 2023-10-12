@@ -107,3 +107,29 @@ def optimize(parameters, closure, LR, num_iter):
         optimizer.step()
 
     print("Optimzation done.")
+
+
+def get_params(opt_over, net, net_input, downsampler=None):
+    """Returns parameters that we want to optimize over.
+
+    Args:
+        opt_over: comma separated list, e.g. "net,input" or "net"
+        net: network
+        net_input: torch.Tensor that stores input `z`
+    """
+    opt_over_list = opt_over.split(",")
+    params = []
+
+    for opt in opt_over_list:
+        if opt == "net":
+            params += [x for x in net.parameters()]
+        elif opt == "down":
+            assert downsampler is not None
+            params = [x for x in downsampler.parameters()]
+        elif opt == "input":
+            net_input.requires_grad = True
+            params += [net_input]
+        else:
+            assert False, "what is it?"
+
+    return params

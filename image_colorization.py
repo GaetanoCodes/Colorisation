@@ -1,6 +1,6 @@
 from typing import Any
 from eccv16 import eccv16
-from utils import resize_image, plot_image, upsample
+from utils import resize_image, plot_image, upsample, optimize, get_params
 from dip_models import get_net
 from dip_models.downsampler import Downsampler
 from coef_chrominance import COEFS
@@ -31,7 +31,7 @@ class Colorizer:
         return self.colorizer(torch.tensor(image))
 
     def lab2rgb(self, image):
-        to_numpy = deepcopy(self.lab_mean.detach().numpy())
+        to_numpy = deepcopy(self.lab_mean_64.detach().numpy())
         color.lab2rgb(to_numpy)
 
 
@@ -65,18 +65,19 @@ class ECCVImage:
         self.proba_chrom_unnorm = BASE_COLOR.unnormalize_ab(self.proba_chrom_norm)
         self.chrom_mean_unnorm = self.proba_chrom_unnorm.sum(axis=1)  # (2,64,64)
 
-        self.lab_mean = torch.cat(
+        self.lab_mean_64 = torch.cat(
             (self.luminance_64[None, None, :], self.chrom_mean_unnorm[None, :]),
             dim=1,
         )
 
-        self.rgb_mean = kornia.color.lab_to_rgb(self.lab_mean)
+        self.rgb_mean = kornia.color.lab_to_rgb(self.lab_mean_64)
+
+        self.output_upsampled = upsample(self.lab_mean_64)
+        self.output_upsampled[:, [0], :] = self.luminance_256
 
     def plot_ECCV(self):
         """Plot l'image output en 256x256"""
-        output_upsampled = upsample(self.lab_mean)
-        output_upsampled[:, [0], :] = self.luminance_256
-        rgb256 = kornia.color.lab_to_rgb(output_upsampled)
+        rgb256 = kornia.color.lab_to_rgb(self.output_upsampled)
         plt.imshow(rgb256[0, :].permute(1, 2, 0).detach().numpy())
         plt.show()
         return
@@ -90,7 +91,7 @@ class LoriaImageColorization(ECCVImage):
             32,
             "skip",
             "reflection",
-            n_channels=4,
+            n_channels=3,
             skip_n33d=128,
             skip_n33u=128,
             skip_n11=4,
@@ -102,10 +103,20 @@ class LoriaImageColorization(ECCVImage):
             n_planes=3, factor=4, kernel_type="lanczos2", phase=0.5, preserve_size=True
         ).type(DTYPE)
 
-    def closure():
-        # déinir 
-        out = self.dip_net(self.)
-        total_loss = loss_fn(out, target)
-        total_loss.backward()
+        self.dip_input = (
+            torch.tensor(np.random.normal(size=(1, 32, 256, 256))).type(DTYPE).detach()
+        )
+        self.loss_fn = torch.nn.MSELoss()
+
+    def closure(self):
+        # déinir
+        out = self.dip_net(self.dip_input)
+        print(out.shape)
+        total_loss = self.loss_fn(out, self.output_upsampled)
+        total_loss.backward(retain_graph=True)
         print(total_loss.item())
         return total_loss
+
+    def optimization(self):
+        parameters = get_params("net", self.dip_net, self.dip_input)
+        optimize(parameters, self.closure, 1, 10)
