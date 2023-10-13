@@ -1,6 +1,6 @@
 from typing import Any
 from eccv16 import eccv16
-from utils import resize_image, plot_image, upsample, optimize, get_params
+from utils import resize_image, plot_image, upsample, get_params
 from dip_models import get_net
 from dip_models.downsampler import Downsampler
 from coef_chrominance import COEFS
@@ -110,26 +110,17 @@ class LoriaImageColorization(ECCVImage):
         self.dip_input = (
             torch.tensor(np.random.normal(size=(1, 32, 256, 256))).type(DTYPE).detach()
         )
-        self.target_normalized_init()
+        self.target_dip = self.get_initialized_image()
 
         self.loss_fn = torch.nn.MSELoss()
 
-    def target_normalized_init(self):
-        # on normalise la luminance
-        l_to_01 = self.luminance_64[None, None, :] / 100
-        # on normalise les chrominances
-        ab_to_01 = BASE_COLOR.ab_128_to_01(self.chrom_mean_unnorm[None, :])
-        target_to_01 = torch.cat((l_to_01, ab_to_01), dim=1)
-        self.target_dip = target_to_01
-        return
-
     def closure(self, num_iter_active):
-        # déinir
         print(num_iter_active)
-        out = self.dip_net(self.dip_input)
-        if num_iter_active % 2 == 0:
+        self.out = self.dip_net(self.dip_input)
+        out = self.out
+        if num_iter_active % 20 == 0:
             # on prend les chrominances
-            out_chr = out[:, 1:, :].clone()
+            out_chr = out[:, 1:, :].clone().detach()
             # on les passe de [0,1] à [-128,128]
             out_chr_unnorm = BASE_COLOR.ab_01_to_128(out_chr)
             image_cat = torch.cat(
@@ -146,37 +137,50 @@ class LoriaImageColorization(ECCVImage):
             )
             # projection
             out_64 = self.downsampler(out)
-            print(out_64[0, 1:, :].min(), out_64[0, 1:, :].max())
+            # print(out_64[0, 1:, :].min(), out_64[0, 1:, :].max())
 
             out_64[:, 0, :, :] = self.luminance_64[None, :]
-            print(out_64.shape)
+            # print(out_64.shape)
             projected = self.projection_chrom(out_64)
-            print(projected[0, 1:, :].min(), projected[0, 1:, :].max())
+            projected[:, 0, :] = 100 * projected[:, 0, :]
+            projected[:, 1:, :] = BASE_COLOR.ab_01_to_128(projected[:, 1:, :])
+            print(
+                "Min and max",
+                projected[0, 1:, :].min(),
+                projected[0, 1:, :].max(),
+                projected[:, 0, :].max(),
+            )
             projected_rgb = kornia.color.lab_to_rgb(projected)
             plt.imsave(
                 f"output/{num_iter_active}_proj.png",
                 projected_rgb[0, :].permute(1, 2, 0).detach().numpy(),
             )
+            # target
+            target_lab = self.target_dip.clone().detach()
+            target_lab[:, 0, :] = 100 * target_lab[:, 0, :]
+            target_lab[:, 1:, :] = BASE_COLOR.ab_01_to_128(target_lab[:, 1:, :])
+            target_rgb = kornia.color.lab_to_rgb(target_lab)
+            plt.imsave(
+                f"output/{num_iter_active}_taregt.png",
+                target_rgb[0, :].permute(1, 2, 0).detach().numpy(),
+            )
             # luminance fixee
             image_cat_lum_fixed = image_cat
-            image_cat_lum_fixed[:, 0, :] = 0 * image_cat_lum_fixed[:, 0, :] + 0.7
+            image_cat_lum_fixed[:, 0, :] = 0 * image_cat_lum_fixed[:, 0, :] + 30
             image_cat_lum_fixed_rgb = kornia.color.lab_to_rgb(image_cat_lum_fixed)
             ##
             plt.imsave(
                 f"output/{num_iter_active}_lum.png",
                 image_cat_lum_fixed_rgb[0, :].permute(1, 2, 0).detach().numpy(),
             )
-        total_loss = self.loss_coupled_tv(
-            out
-        )  # self.loss_fn(self.downsampler(out), self.target_dip)
-        print(total_loss.item())
+        total_loss = self.loss_coupled_tv(out)
+        print("LOSS", total_loss.item())
         total_loss.backward(retain_graph=True)
 
         return total_loss
 
     def optimization(self):
-        parameters = get_params("net", self.dip_net, self.dip_input)
-        optimize(parameters, self.closure, 0.05, 100)
+        self.optimize(0.02, 2000)
 
     def loss_coupled_tv(self, out, gamma=80):
         # Coupled TV
@@ -191,35 +195,78 @@ class LoriaImageColorization(ECCVImage):
         coupled_tv = 0.000005 * torch.sum(torch.pow(epsilon + delta, 0.5))
         # Norme L2
         l2 = self.loss_fn(self.downsampler(out), self.target_dip)
+        # norm luminance
+        loss_lum = self.loss_fn(self.downsampler(out)[:, 0, :], self.luminance_64 / 100)
 
-        return coupled_tv + l2
+        return l2 + loss_lum + coupled_tv
 
-    def projection_chrom(self, image, k=5):
-        ##
+    def projection_chrom(self, image, k=313):
         coefs_to_128 = 0.5 * (COEFS + 1)  # entre 0 et 1
         coefs_a = coefs_to_128[:, 0]
         coefs_b = coefs_to_128[:, 1]
         coefs_a = coefs_a[None, :, None, None] * torch.ones(1, 313, 64, 64)
         coefs_b = coefs_b[None, :, None, None] * torch.ones(1, 313, 64, 64)
 
-        print(coefs_a.shape, image[0, 1, :].shape)
-
-        ind_max_a = torch.argmax(torch.abs(coefs_a - image[0, 1, :]), dim=1)
-        ind_max_b = torch.argmax(torch.abs(coefs_b - image[0, 1, :]), dim=1)
-
-        projected_chrm_a = torch.gather(coefs_a, 1, ind_max_a.unsqueeze(2)).squeeze(2)
-        projected_chrm_b = torch.gather(coefs_b, 1, ind_max_b.unsqueeze(2)).squeeze(2)
-
-        print(
-            "Projection",
-            projected_chrm_a[0, 1:, :].min(),
-            projected_chrm_a[0, 1:, :].max(),
+        ind_min = torch.argmin(
+            torch.pow(coefs_a - image[0, 1, :], 2)
+            + torch.pow(coefs_b - image[0, 2, :], 2),
+            dim=1,
         )
 
-        ##
+        projected_chrm_a = torch.gather(coefs_a, 1, ind_min.unsqueeze(2)).squeeze(2)
+        projected_chrm_b = torch.gather(coefs_b, 1, ind_min.unsqueeze(2)).squeeze(2)
 
-        projected = image.clone()
-        projected[:, 1, :, :] = BASE_COLOR.ab_01_to_128(projected_chrm_a)
-        projected[:, 2, :, :] = BASE_COLOR.ab_01_to_128(projected_chrm_b)
+        projected = torch.ones(1, 3, 64, 64)
+        # il ne faut pas denormaliseer
+        projected[:, 1, :, :] = projected_chrm_a
+        projected[:, 2, :, :] = projected_chrm_b
+        projected[0, 0, :, :] = self.luminance_64 / 100
 
         return projected
+
+    def get_initialized_image(self):
+        coefs_to_128 = 0.5 * (COEFS + 1)
+        coefs_a = coefs_to_128[:, 0]
+        coefs_b = coefs_to_128[:, 1]
+        coefs_a = coefs_a[None, :, None, None] * torch.ones(1, 313, 64, 64)
+        coefs_b = coefs_b[None, :, None, None] * torch.ones(1, 313, 64, 64)
+        ind_max = torch.argmax(self.proba_distrib, axis=1)
+
+        chr_a = torch.gather(coefs_a, 1, ind_max.unsqueeze(2)).squeeze(2)
+        chr_b = torch.gather(coefs_b, 1, ind_max.unsqueeze(2)).squeeze(2)
+        intitialized = torch.ones(1, 3, 64, 64)
+        intitialized[:, 1, :, :] = chr_a
+        intitialized[:, 2, :, :] = chr_b
+        intitialized[:, 0, :, :] = self.luminance_64[None, :] / 100
+
+        # plt.imshow(intitialized_rgb[0, :].permute(1, 2, 0).detach().numpy())
+        # plt.show()
+        return intitialized
+
+    def optimize(self, LR, num_iter):
+        """Runs optimization loop.
+
+        Args:
+            optimizer_type: 'LBFGS' of 'adam'
+            parameters: list of Tensors to optimize over
+            closure: function, that returns loss variable
+            LR: learning rate
+            num_iter: number of iterations
+        """
+        parameters = get_params("net", self.dip_net, self.dip_input)
+        print("Starting optimization with ADAM")
+        optimizer = torch.optim.Adam(parameters, lr=LR)
+        print("Nombre d'itérations total :", num_iter)
+        for j in range(num_iter):
+            print(j)
+            if j < 400 or (j % 200 != 0):
+                print("Optimization over theta.")
+                optimizer.zero_grad()
+                self.closure(j)
+                optimizer.step()
+            # else:
+            #     new_target = self.projection_chrom(self.downsampler(self.out))
+            #     new_target[0, 0, :] = self.luminance_64.clone().detach() / 100
+            #     self.target_dip = new_target.clone().detach()
+
+        print("Optimzation done.")

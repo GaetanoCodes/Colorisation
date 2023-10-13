@@ -87,28 +87,6 @@ def upsample(image):
     return up(image)
 
 
-def optimize(parameters, closure, LR, num_iter):
-    """Runs optimization loop.
-
-    Args:
-        optimizer_type: 'LBFGS' of 'adam'
-        parameters: list of Tensors to optimize over
-        closure: function, that returns loss variable
-        LR: learning rate
-        num_iter: number of iterations
-    """
-
-    print("Starting optimization with ADAM")
-    optimizer = torch.optim.Adam(parameters, lr=LR)
-
-    for j in range(num_iter):
-        optimizer.zero_grad()
-        closure(j)
-        optimizer.step()
-
-    print("Optimzation done.")
-
-
 def get_params(opt_over, net, net_input, downsampler=None):
     """Returns parameters that we want to optimize over.
 

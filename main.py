@@ -5,9 +5,8 @@ from image_colorization import ECCVImage, LoriaImageColorization
 from PIL import Image
 
 if __name__ == "__main__":
-    image = np.array(Image.open("images/papillon.jpg"))[:, :, 0]
+    image = np.array(Image.open("images/lion_fabien.jpg"))  # [:, :, 0]
 
     loria_colorizer = LoriaImageColorization(image)
     # loria_colorizer.plot_ECCV()
     loria_colorizer.optimization()
-    # loria_colorizer.projection_chrom()
