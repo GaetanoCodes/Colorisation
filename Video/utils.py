@@ -59,3 +59,17 @@ class Video:
         plt.imshow(rows, cmap="gray")
         plt.show()
         return
+
+
+def build_video(video_tensor):
+    """the input tensor should be bewteen 0 and 100 (scale of pixel) (at least now for luminance)"""
+    size = video_tensor.shape[1], video_tensor.shape[2]
+    fps = 30
+    out = cv2.VideoWriter(
+        "output.mp4", cv2.VideoWriter_fourcc(*"mp4v"), fps, (size[1], size[0]), False
+    )
+    for i in range(video_tensor.shape[0]):
+        data = (video_tensor[i, :] * 255 / 100).type(torch.uint8).cpu().detach().numpy()
+        print(data.shape, data)
+        out.write(data)
+    out.release()
