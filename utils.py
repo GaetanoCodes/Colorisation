@@ -4,6 +4,7 @@ import torch
 import matplotlib.pyplot as plt
 import skimage
 from PIL import Image
+import torchvision.transforms.functional as F
 
 
 def resize_video(video_array: np.array, size=(128, 128), type_="numpy"):
@@ -46,9 +47,8 @@ def resize_video(video_array: np.array, size=(128, 128), type_="numpy"):
 
 
 def resize_image(img, size=(256, 256), resample=3):
-    return torch.tensor(
-        np.array(Image.fromarray(img).resize((size[1], size[0]), resample=resample))
-    )
+    
+    return F.resize(img[None,:], size = size)[0,:]
 
 
 def postprocess_tens(tens_orig_l, out_ab, mode="bilinear"):
