@@ -4,7 +4,7 @@ import numpy as np
 import torch.nn.functional as F
 from IPython import embed
 import matplotlib.pyplot as plt
-from utils import *
+from .utils import *
 import torchvision.transforms as T
 
 
