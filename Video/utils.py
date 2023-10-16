@@ -105,7 +105,6 @@ class DVP(Video):
         out = self.unet(self.input)
         total_loss = self.loss_fn(out, self.video_centered)
         total_loss.backward()
-        # print(total_loss.item())
         return total_loss
 
     def get_input(self):
