@@ -7,13 +7,28 @@ from dip_model.model import UNet
 
 
 class Video:
-    def __init__(self, path, size=(256, 256)):
+    def __init__(self, path, size=(256, 256), GPU=True):
+        if GPU:
+            self.dtype = torch.cuda.FloatTensor
+        else:
+            self.dtype = torch.float
+        self.dev = (
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        )
+
         self.path = path
         self.video, self.fps = self.path_to_tensor_and_fps()
         self.image_number = self.video.shape[0]
         self.video_norm = self.normalize_video_to_100()
         self.size = size
         self.video_resized = self.resize_video()
+        if GPU:
+            self.dtype = torch.cuda.FloatTensor
+        else:
+            self.dtype = torch.float
+        self.dev = (
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        )
 
     def path_to_tensor_and_fps(self):
         video = cv2.VideoCapture(self.path)
@@ -31,7 +46,7 @@ class Video:
         print("Video converted to torch.Tensor : ")
         print(f"    - Number of frames : {frames.shape[0]},")
         print(f"    - FPS : {fps}.")
-        return frames, fps
+        return frames.to(self.dev), fps
 
     def normalize_video_to_100(self, original_max=255):
         video_norm = (100 / original_max) * self.video
@@ -64,7 +79,7 @@ class Video:
 
 
 class DVP(Video):
-    def __init__(self, path, GPU=True, size=(256, 256)):
+    def __init__(self, path, GPU=True, size=(256, 256), frame_number=16):
         super().__init__(path, size=size)
 
         self.unet = UNet(1, 1, width_multiplier=0.5, trilinear=True, use_ds_conv=False)
@@ -72,16 +87,10 @@ class DVP(Video):
             self.unet.cuda()
         self.size = (256, 256)
         self.loss_fn = torch.nn.MSELoss()
-
-        if GPU:
-            self.dtype = torch.cuda.FloatTensor
-        else:
-            self.dtype = torch.float
-        self.dev = (
-            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        )
+        self.frame_number = frame_number
 
         self.video_centered = self.video_center(self.video_norm)
+        self.target = self.video_centered[:frame_number][None, :][None, :]
         self.input = self.get_input()
 
     def video_center(self, video_array, direction="center"):
