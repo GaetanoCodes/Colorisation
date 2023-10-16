@@ -89,7 +89,7 @@ class DVP(Video):
         self.loss_fn = torch.nn.MSELoss()
         self.frame_number = frame_number
 
-        self.video_centered = self.video_center(self.video_norm)
+        self.video_centered = self.video_center(self.video_resized)
         self.target = self.video_centered[:frame_number][None, :][None, :]
         self.input = self.get_input()
 
