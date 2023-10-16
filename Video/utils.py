@@ -137,6 +137,43 @@ class DVP(Video):
             optimizer.zero_grad()
             self.closure()
             optimizer.step()
+            if j % 10 == 0:
+                print(f"Step {j}")
+            if j % 100 == 0:
+                print(j)
+                plt.figure(figsize=(24, 80))
+                video_list1 = [
+                    self.image_center(
+                        self.unet(self.input)[0, 0, i, :].cpu().detach().numpy(),
+                        direction="decenter",
+                    )
+                    for i in range(8)
+                ]
+                video_list2 = [
+                    self.image_center(
+                        self.unet(self.input)[0, 0, i, :].cpu().detach().numpy(),
+                        direction="decenter",
+                    )
+                    for i in range(8, 16)
+                ]
+                # video_list3 = [image_center(model(input_)[0,0,i,:].cpu().detach().numpy(), direction = 'decenter') for i in range(16,24)]
+                # video_list4 = [image_center(model(input_)[0,0,i,:].cpu().detach().numpy(), direction = 'decenter') for i in range(24,32)]
+
+                video_list1 = np.hstack(tuple(video_list1))
+                video_list2 = np.hstack(tuple(video_list2))
+                # video_list3 = np.hstack(tuple(video_list3))
+                # video_list4 = np.hstack(tuple(video_list4))
+
+                # plt.imshow(np.vstack((video_list1, video_list2, video_list3, video_list4)), cmap = 'gray')
+                plt.imshow(np.vstack((video_list1, video_list2)), cmap="gray")
+                # plt.imsave(f"drive/MyDrive/Deep Video Prior/Jackie2/{j}.jpg", np.vstack((video_list1, video_list2 , video_list3, video_list4)), cmap = "gray")
+                plt.imsave(
+                    f"drive/MyDrive/Deep Video Prior/Jackie/{j}.jpg",
+                    np.vstack((video_list1, video_list2)),
+                    cmap="gray",
+                )
+
+                plt.show()
 
 
 def get_params(opt_over, net, net_input, downsampler=None):
