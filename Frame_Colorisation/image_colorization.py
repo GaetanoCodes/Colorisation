@@ -97,7 +97,6 @@ class ECCVImage:
 
 class LoriaImageColorization(ECCVImage):
     def __init__(self, black_image):
-        print(DEV)
         super().__init__(black_image)
         # DIP network
         self.ones = torch.ones(1, 313, 64, 64).to(DEV)

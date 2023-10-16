@@ -3,14 +3,16 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from dip_model.model import UNet
 
 
 class Video:
-    def __init__(self, path):
+    def __init__(self, path, size=(256, 256)):
         self.path = path
         self.video, self.fps = self.path_to_tensor_and_fps()
         self.image_number = self.video.shape[0]
         self.video_norm = self.normalize_video_to_100()
+        self.size = size
         self.video_resized = self.resize_video()
 
     def path_to_tensor_and_fps(self):
@@ -38,7 +40,7 @@ class Video:
     def resize_video(self):
         resized_video = F.interpolate(
             self.video_norm.unsqueeze(0),
-            size=(256, 256),
+            size=self.size,
             mode="bilinear",
             align_corners=False,
         )
@@ -59,6 +61,100 @@ class Video:
         plt.imshow(rows, cmap="gray")
         plt.show()
         return
+
+
+class DVP(Video):
+    def __init__(self, path, GPU=True, size=(256, 256)):
+        super().__init__(path, size=size)
+
+        self.unet = UNet(1, 1, width_multiplier=0.5, trilinear=True, use_ds_conv=False)
+        if torch.cuda.is_available():
+            self.unet.cuda()
+        self.size = (256, 256)
+        self.loss_fn = torch.nn.MSELoss()
+
+        if GPU:
+            self.dtype = torch.cuda.FloatTensor
+        else:
+            self.dtype = torch.float
+        self.dev = (
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        )
+
+        self.video_centered = self.video_center(self.video_norm)
+        self.input = self.get_input()
+
+    def video_center(self, video_array, direction="center"):
+        if direction == "center":
+            video_center = video_array / 50 - 1
+            return video_center
+        else:
+            video_decenter = ((video_array + 1) * 50).astype(int)
+            return video_decenter
+
+    def closure(self):
+        out = self.unet(self.input)
+        total_loss = self.loss_fn(out, self.video_centered)
+        total_loss.backward()
+        # print(total_loss.item())
+        return total_loss
+
+    def get_input(self):
+        size = self.size
+        frame_N = self.frame_number
+
+        input_ = (
+            torch.Tensor(np.random.rand(1, 1, frame_N, size[0], size[1]))
+            .type(self.dtype)
+            .to(self.dev)
+        )
+        return input_
+
+    def optimize(self, LR, num_iter):
+        """Runs optimization loop.
+
+        Args:
+            optimizer_type: 'LBFGS' of 'adam'
+            parameters: list of Tensors to optimize over
+            closure: function, that returns loss variable
+            LR: learning rate
+            num_iter: number of iterations
+        """
+
+        print("Starting optimization with ADAM")
+        parameters = get_params(self.unet)
+        optimizer = torch.optim.Adam(parameters, lr=LR)
+
+        for j in range(num_iter):
+            optimizer.zero_grad()
+            self.closure()
+            optimizer.step()
+
+
+def get_params(opt_over, net, net_input, downsampler=None):
+    """Returns parameters that we want to optimize over.
+
+    Args:
+        opt_over: comma separated list, e.g. "net,input" or "net"
+        net: network
+        net_input: torch.Tensor that stores input `z`
+    """
+    opt_over_list = opt_over.split(",")
+    params = []
+
+    for opt in opt_over_list:
+        if opt == "net":
+            params += [x for x in net.parameters()]
+        elif opt == "down":
+            assert downsampler is not None
+            params = [x for x in downsampler.parameters()]
+        elif opt == "input":
+            net_input.requires_grad = True
+            params += [net_input]
+        else:
+            assert False, "what is it?"
+
+    return params
 
 
 def build_video(video_tensor):
