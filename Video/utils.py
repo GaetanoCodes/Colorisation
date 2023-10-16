@@ -130,7 +130,7 @@ class DVP(Video):
         """
 
         print("Starting optimization with ADAM")
-        parameters = get_params(self.unet)
+        parameters = get_params("net", self.unet, self.input)
         optimizer = torch.optim.Adam(parameters, lr=LR)
 
         for j in range(num_iter):
