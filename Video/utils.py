@@ -4,6 +4,35 @@ import numpy as np
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from .dip_model.model import UNet
+import kornia
+import torch.nn as nn
+
+
+class BaseColor(nn.Module):
+    def __init__(self):
+        super(BaseColor, self).__init__()
+
+        self.l_cent = 50
+        self.l_norm = 100.0
+        self.ab_norm = 128.0
+
+    def normalize_l(self, in_l):
+        return (in_l - self.l_cent) / self.l_norm
+
+    def unnormalize_l(self, in_l):
+        return in_l * self.l_norm + self.l_cent
+
+    def normalize_ab(self, in_ab):
+        return in_ab / self.ab_norm
+
+    def unnormalize_ab(self, in_ab):
+        return in_ab * self.ab_norm
+
+    def ab_128_to_01(self, in_ab):
+        return (in_ab + self.ab_norm) / (2 * self.ab_norm)
+
+    def ab_01_to_128(self, in_ab):
+        return in_ab * (2 * self.ab_norm) - self.ab_norm
 
 
 class Video:
@@ -17,11 +46,15 @@ class Video:
         )
 
         self.path = path
-        self.video, self.fps = self.path_to_tensor_and_fps()
+        self.video_color, self.fps = self.path_to_tensor_and_fps()
+        self.video = self.video_color[:, 0, :]
         self.image_number = self.video.shape[0]
         self.video_norm = self.normalize_video_to_100()
         self.size = size
         self.video_resized = self.resize_video()
+        self.video_rgb_1 = self.video_rgb_to_1()
+        self.video_lab_128 = self.video_lab_to_128()
+
         if GPU:
             self.dtype = torch.cuda.FloatTensor
         else:
@@ -41,11 +74,13 @@ class Video:
                 frames.append(frame)
             else:
                 break
-        frames = torch.tensor(np.array(frames))[:, :, :, 0]
+        frames = torch.tensor(np.array(frames))
         video.release()
         print("Video converted to torch.Tensor : ")
         print(f"    - Number of frames : {frames.shape[0]},")
         print(f"    - FPS : {fps}.")
+        frames = frames.permute(0, 3, 1, 2)
+        print(frames.shape)
         return frames.to(self.dev), fps
 
     def normalize_video_to_100(self, original_max=255):
@@ -76,6 +111,15 @@ class Video:
         plt.imshow(rows, cmap="gray")
         plt.show()
         return
+
+    def video_rgb_to_1(self):
+        return self.video_color / 255
+
+    def video_lab_to_128(self):
+        lab = kornia.color.rgb_to_lab(self.video_rgb_1)
+        plt.imshow(lab[0, 0, :], cmap="gray")
+        plt.show()
+        return lab
 
 
 class DVP(Video):
@@ -204,13 +248,21 @@ def get_params(opt_over, net, net_input, downsampler=None):
 
 def build_video(video_tensor):
     """the input tensor should be bewteen 0 and 100 (scale of pixel) (at least now for luminance)"""
-    size = video_tensor.shape[1], video_tensor.shape[2]
+    size = video_tensor.shape[2], video_tensor.shape[3]
+    print(size)
     fps = 30
     out = cv2.VideoWriter(
-        "output.mp4", cv2.VideoWriter_fourcc(*"mp4v"), fps, (size[1], size[0]), False
+        "output.mp4", cv2.VideoWriter_fourcc(*"mp4v"), fps, (size[1], size[0]), True
     )
     for i in range(video_tensor.shape[0]):
-        data = (video_tensor[i, :] * 255 / 100).type(torch.uint8).cpu().detach().numpy()
-        print(data.shape, data)
+        data = (
+            (video_tensor[i, :] * 255)
+            .permute(1, 2, 0)
+            .type(torch.uint8)
+            .cpu()
+            .detach()
+            .numpy()
+        )
+        print(data.shape)
         out.write(data)
     out.release()
