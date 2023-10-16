@@ -103,7 +103,7 @@ class DVP(Video):
 
     def closure(self):
         out = self.unet(self.input)
-        total_loss = self.loss_fn(out, self.video_centered)
+        total_loss = self.loss_fn(out, self.target)
         total_loss.backward()
         return total_loss
 
