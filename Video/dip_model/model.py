@@ -1,6 +1,7 @@
 """Adapted from https://github.com/milesial/Pytorch-UNet/tree/master/unet"""
 import torch.nn as nn
 import torch.nn.functional as F
+import torch
 
 
 class UNet(nn.Module):
