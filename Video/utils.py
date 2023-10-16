@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-from dip_model.model import UNet
+from .dip_model.model import UNet
 
 
 class Video:
