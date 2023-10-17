@@ -92,7 +92,7 @@ class Video:
     def resize_video(self):
         resized_video = F.interpolate(
             self.video_color.unsqueeze(0),
-            size=self.size,
+            size=[3] + list(self.size),
             mode="bilinear",
             align_corners=False,
         )
