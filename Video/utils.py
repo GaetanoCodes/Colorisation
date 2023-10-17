@@ -56,14 +56,8 @@ class Video:
         self.video_rgb_1_resized = self.video_rgb_to_1()
         self.video_lab_128_resized = self.video_lab_to_128()
         self.video_lab_1_resized = self.video_lab_to_1()
-
-        if GPU:
-            self.dtype = torch.cuda.FloatTensor
-        else:
-            self.dtype = torch.float
-        self.dev = (
-            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        )
+        print(self.video_lab_1_resized.shape)
+        print(self.video_lab_1_resized.min(), self.video_lab_1_resized.max())
 
     def path_to_tensor_and_fps(self):
         video = cv2.VideoCapture(self.path)
@@ -90,13 +84,32 @@ class Video:
         return video_norm
 
     def resize_video(self):
-        resized_video = F.interpolate(
-            self.video_color.unsqueeze(0),
-            size=[3] + list(self.size),
+        # revoir la méthode pour qu'il prenne un tenseur 5d
+        print(self.video_color.shape)
+        video_chr_a = self.video_color[:, 1, :]
+        video_chr_b = self.video_color[:, 2, :]
+        video_l = self.video_color[:, 0, :]
+        resized_l = F.interpolate(
+            video_l.unsqueeze(0),
+            size=list(self.size),
             mode="bilinear",
             align_corners=False,
         )
-        resized_video = resized_video.squeeze(0)
+        resized_chr_a = F.interpolate(
+            video_chr_a.unsqueeze(0),
+            size=list(self.size),
+            mode="bilinear",
+            align_corners=False,
+        )
+        resized_chr_b = F.interpolate(
+            video_chr_b.unsqueeze(0),
+            size=list(self.size),
+            mode="bilinear",
+            align_corners=False,
+        )
+
+        resized_video = torch.cat((resized_l, resized_chr_a, resized_chr_b), dim=0)
+        resized_video = resized_video.permute(1, 0, 2, 3)
         return resized_video
 
     def plot_images(self, num=16):
@@ -115,15 +128,10 @@ class Video:
         return
 
     def video_rgb_to_1(self):
-        return self.video_color / 255
+        return self.video_resized / 255
 
     def video_lab_to_128(self):
         lab = kornia.color.rgb_to_lab(self.video_rgb_1_resized)
-        # lab_test = lab.clone()
-        # lab_test[0, 0, 1:] = 50
-        # faire un code pour afficher seulement la chrominance
-        # plt.imshow(lab[0, 0, :], cmap="gray")
-        # plt.show()
         return lab
 
     def video_lab_to_1(self):
@@ -134,8 +142,8 @@ class Video:
 
 
 class DVP(Video):
-    def __init__(self, path, GPU=True, size=(256, 256), frame_number=16):
-        super().__init__(path, size=size)
+    def __init__(self, path, GPU=False, size=(256, 256), frame_number=16):
+        super().__init__(path, size=size, GPU=GPU)
 
         self.unet = UNet(1, 1, width_multiplier=0.5, trilinear=True, use_ds_conv=False)
         if torch.cuda.is_available():
@@ -159,13 +167,14 @@ class DVP(Video):
             return video_decenter
 
     def get_mask(self):
-        mask = torch.ones(size=self.input.shape)
-        first_unknown = 2
-        last_unkown = -2
+        mask = torch.ones(size=[self.frame_number, 3, self.size[0], self.size[1]])
+        first_unknown = 10
+        last_unkown = 11
         mask[first_unknown:last_unkown, 1:, :] = 0
         return mask
 
     def get_target(self, method="propagation"):
+        print("LAB 1", self.video_lab_1_resized.max())
         if method == "propagation":
             target = self.video_lab_1_resized[: self.frame_number] * 2 - 1
             target = target * self.mask
@@ -184,15 +193,25 @@ class DVP(Video):
 
     def output_to_rgb(self, out):
         out_rgb = out.clone()
-        out_rgb[0, 0, 0, :] = 50 * (out_rgb[0, 0, :] + 1)
-        out_rgb[0, 0, 1:, :] = 128 * out_rgb[0, 0, :]
+        out_rgb[:, 0, :] = 50 * (out_rgb[:, 0, :] + 1)
+        print()
+        out_rgb[:, 1:, :] = 128 * out_rgb[:, 1:, :]
         out_rgb = kornia.color.lab_to_rgb(out_rgb)
+        plt.imshow(out_rgb[0].permute(1, 2, 0).cpu().detach().numpy())
+        plt.show()
+        out_rgb = 100 * out_rgb
         return out_rgb
+
+    def build_output_video(self):
+        # out = self.out.clone()
+        out = self.target
+        out_rgb = self.output_to_rgb(out) / 100
+        build_video(out_rgb, name="test")
 
     def closure(self, method="propagation"):
         if method == "propagation":
-            out = self.unet(self.input)
-            total_loss = self.loss_fn(out * self.mask, self.target)
+            self.out = self.unet(self.input)
+            total_loss = self.loss_fn(self.out * self.mask, self.target)
             total_loss.backward()
             return
 
@@ -219,7 +238,6 @@ class DVP(Video):
                 print(f"Step {j}")
 
         output = self.unet(self.input)
-        output_rgb = self.output_to_rgb(output)
 
         # plt.figure(figsize=(24, 80))
         # video_list1 = [
@@ -282,13 +300,13 @@ def get_params(opt_over, net, net_input, downsampler=None):
     return params
 
 
-def build_video(video_tensor):
+def build_video(video_tensor, name="output"):
     """the input tensor should be bewteen 0 and 100 (scale of pixel) (at least now for luminance)"""
     print("Building video.")
     size = video_tensor.shape[2], video_tensor.shape[3]
     fps = 30
     out = cv2.VideoWriter(
-        "output.mp4", cv2.VideoWriter_fourcc(*"mp4v"), fps, (size[1], size[0]), True
+        f"{name}.mp4", cv2.VideoWriter_fourcc(*"mp4v"), fps, (size[1], size[0]), True
     )
     for i in range(video_tensor.shape[0]):
         data = (
