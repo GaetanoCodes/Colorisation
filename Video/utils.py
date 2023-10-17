@@ -51,12 +51,11 @@ class Video:
         self.video_color, self.fps = self.path_to_tensor_and_fps()
         self.video = self.video_color[:, 0, :]
         self.image_number = self.video.shape[0]
-        self.video_norm = self.normalize_video_to_100()
         self.size = size
-        self.video_resized = self.resize_video()
-        self.video_rgb_1 = self.video_rgb_to_1()
-        self.video_lab_128 = self.video_lab_to_128()
-        self.video_lab_1 = self.video_lab_to_1()
+        self.video_resized = self.resize_video()  # color /255 resized
+        self.video_rgb_1_resized = self.video_rgb_to_1()
+        self.video_lab_128_resized = self.video_lab_to_128()
+        self.video_lab_1_resized = self.video_lab_to_1()
 
         if GPU:
             self.dtype = torch.cuda.FloatTensor
@@ -92,7 +91,7 @@ class Video:
 
     def resize_video(self):
         resized_video = F.interpolate(
-            self.video_norm.unsqueeze(0),
+            self.video_color.unsqueeze(0),
             size=self.size,
             mode="bilinear",
             align_corners=False,
@@ -119,7 +118,7 @@ class Video:
         return self.video_color / 255
 
     def video_lab_to_128(self):
-        lab = kornia.color.rgb_to_lab(self.video_rgb_1)
+        lab = kornia.color.rgb_to_lab(self.video_rgb_1_resized)
         # lab_test = lab.clone()
         # lab_test[0, 0, 1:] = 50
         # faire un code pour afficher seulement la chrominance
@@ -128,7 +127,7 @@ class Video:
         return lab
 
     def video_lab_to_1(self):
-        lab_1 = self.video_lab_128.clone()
+        lab_1 = self.video_lab_128_resized.clone()
         lab_1[:, 0, :] = lab_1[:, 0, :] / 100
         lab_1[:, 1:, :] = BASE_COLOR.ab_128_to_01(lab_1[:, 1:, :])
         return lab_1
@@ -168,7 +167,7 @@ class DVP(Video):
 
     def get_target(self, method="propagation"):
         if method == "propagation":
-            target = self.video_lab_1[: self.frame_number] * 2 - 1
+            target = self.video_lab_1_resized[: self.frame_number] * 2 - 1
             target = target * self.mask
             return target.clone()
 

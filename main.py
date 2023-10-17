@@ -1,7 +1,7 @@
-from Video.utils import Video, build_video
+from Video.utils import Video, build_video, DVP
 
 if __name__ == "__main__":
     path = "Video/videos/poisson_court2.mp4"
-    video = Video(path)
+    video = DVP(path)
     # video.plot_images()
     # build_video(video.video_rgb_1)
