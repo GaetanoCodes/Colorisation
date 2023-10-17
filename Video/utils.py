@@ -35,6 +35,9 @@ class BaseColor(nn.Module):
         return in_ab * (2 * self.ab_norm) - self.ab_norm
 
 
+BASE_COLOR = BaseColor()
+
+
 class Video:
     def __init__(self, path, size=(256, 256), GPU=True):
         if GPU:
@@ -44,7 +47,6 @@ class Video:
         self.dev = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
-
         self.path = path
         self.video_color, self.fps = self.path_to_tensor_and_fps()
         self.video = self.video_color[:, 0, :]
@@ -54,6 +56,7 @@ class Video:
         self.video_resized = self.resize_video()
         self.video_rgb_1 = self.video_rgb_to_1()
         self.video_lab_128 = self.video_lab_to_128()
+        self.video_lab_1 = self.video_lab_to_1()
 
         if GPU:
             self.dtype = torch.cuda.FloatTensor
@@ -117,9 +120,18 @@ class Video:
 
     def video_lab_to_128(self):
         lab = kornia.color.rgb_to_lab(self.video_rgb_1)
-        plt.imshow(lab[0, 0, :], cmap="gray")
-        plt.show()
+        # lab_test = lab.clone()
+        # lab_test[0, 0, 1:] = 50
+        # faire un code pour afficher seulement la chrominance
+        # plt.imshow(lab[0, 0, :], cmap="gray")
+        # plt.show()
         return lab
+
+    def video_lab_to_1(self):
+        lab_1 = self.video_lab_128.clone()
+        lab_1[:, 0, :] = lab_1[:, 0, :] / 100
+        lab_1[:, 1:, :] = BASE_COLOR.ab_128_to_01(lab_1[:, 1:, :])
+        return lab_1
 
 
 class DVP(Video):
@@ -133,9 +145,11 @@ class DVP(Video):
         self.loss_fn = torch.nn.MSELoss()
         self.frame_number = frame_number
 
-        self.video_centered = self.video_center(self.video_resized)
-        self.target = self.video_centered[:frame_number][None, :][None, :]
         self.input = self.get_input()
+        self.mask = self.get_mask()
+        self.target = self.get_target()
+        # self.video_centered = self.video_center(self.video_resized)
+        # self.target = self.video_centered[:frame_number][None, :][None, :]
 
     def video_center(self, video_array, direction="center"):
         if direction == "center":
@@ -145,11 +159,18 @@ class DVP(Video):
             video_decenter = ((video_array + 1) * 50).astype(int)
             return video_decenter
 
-    def closure(self):
-        out = self.unet(self.input)
-        total_loss = self.loss_fn(out, self.target)
-        total_loss.backward()
-        return total_loss
+    def get_mask(self):
+        mask = torch.ones(size=self.input.shape)
+        first_unknown = 2
+        last_unkown = -2
+        mask[first_unknown:last_unkown, 1:, :] = 0
+        return mask
+
+    def get_target(self, method="propagation"):
+        if method == "propagation":
+            target = self.video_lab_1[: self.frame_number] * 2 - 1
+            target = target * self.mask
+            return target.clone()
 
     def get_input(self):
         size = self.size
@@ -161,6 +182,20 @@ class DVP(Video):
             .to(self.dev)
         )
         return input_
+
+    def output_to_rgb(self, out):
+        out_rgb = out.clone()
+        out_rgb[0, 0, 0, :] = 50 * (out_rgb[0, 0, :] + 1)
+        out_rgb[0, 0, 1:, :] = 74 * (out_rgb[0, 0, :] + 1)
+        out_rgb = kornia.color.lab_to_rgb(out_rgb)
+        return out_rgb
+
+    def closure(self, method="propagation"):
+        if method == "propagation":
+            out = self.unet(self.input)
+            total_loss = self.loss_fn(out * self.mask, self.target)
+            total_loss.backward()
+            return
 
     def optimize(self, LR, num_iter):
         """Runs optimization loop.
@@ -183,41 +218,43 @@ class DVP(Video):
             optimizer.step()
             if j % 10 == 0:
                 print(f"Step {j}")
-            if j % 100 == 0:
-                print(j)
-                plt.figure(figsize=(24, 80))
-                video_list1 = [
-                    self.image_center(
-                        self.unet(self.input)[0, 0, i, :].cpu().detach().numpy(),
-                        direction="decenter",
-                    )
-                    for i in range(8)
-                ]
-                video_list2 = [
-                    self.image_center(
-                        self.unet(self.input)[0, 0, i, :].cpu().detach().numpy(),
-                        direction="decenter",
-                    )
-                    for i in range(8, 16)
-                ]
-                # video_list3 = [image_center(model(input_)[0,0,i,:].cpu().detach().numpy(), direction = 'decenter') for i in range(16,24)]
-                # video_list4 = [image_center(model(input_)[0,0,i,:].cpu().detach().numpy(), direction = 'decenter') for i in range(24,32)]
 
-                video_list1 = np.hstack(tuple(video_list1))
-                video_list2 = np.hstack(tuple(video_list2))
-                # video_list3 = np.hstack(tuple(video_list3))
-                # video_list4 = np.hstack(tuple(video_list4))
+        output = self.unet(self.input)
+        output_rgb = self.output_to_rgb(output)
 
-                # plt.imshow(np.vstack((video_list1, video_list2, video_list3, video_list4)), cmap = 'gray')
-                plt.imshow(np.vstack((video_list1, video_list2)), cmap="gray")
-                # plt.imsave(f"drive/MyDrive/Deep Video Prior/Jackie2/{j}.jpg", np.vstack((video_list1, video_list2 , video_list3, video_list4)), cmap = "gray")
-                plt.imsave(
-                    f"drive/MyDrive/Deep Video Prior/Jackie/{j}.jpg",
-                    np.vstack((video_list1, video_list2)),
-                    cmap="gray",
-                )
+        # plt.figure(figsize=(24, 80))
+        # video_list1 = [
+        #     self.image_center(
+        #         output_rgb[0, 0, i, :].cpu().detach().numpy(),
+        #         direction="decenter",
+        #     )
+        #     for i in range(8)
+        # ]
+        # video_list2 = [
+        #     self.image_center(
+        #         output_rgb[0, 0, i, :].cpu().detach().numpy(),
+        #         direction="decenter",
+        #     )
+        #     for i in range(8, 16)
+        # ]
+        # # video_list3 = [image_center(model(input_)[0,0,i,:].cpu().detach().numpy(), direction = 'decenter') for i in range(16,24)]
+        # # video_list4 = [image_center(model(input_)[0,0,i,:].cpu().detach().numpy(), direction = 'decenter') for i in range(24,32)]
 
-                plt.show()
+        # video_list1 = np.hstack(tuple(video_list1))
+        # video_list2 = np.hstack(tuple(video_list2))
+        # # video_list3 = np.hstack(tuple(video_list3))
+        # # video_list4 = np.hstack(tuple(video_list4))
+
+        # # plt.imshow(np.vstack((video_list1, video_list2, video_list3, video_list4)), cmap = 'gray')
+        # plt.imshow(np.vstack((video_list1, video_list2)), cmap="gray")
+        # # plt.imsave(f"drive/MyDrive/Deep Video Prior/Jackie2/{j}.jpg", np.vstack((video_list1, video_list2 , video_list3, video_list4)), cmap = "gray")
+        # plt.imsave(
+        #     f"drive/MyDrive/Deep Video Prior/Jackie/{j}.jpg",
+        #     np.vstack((video_list1, video_list2)),
+        #     cmap="gray",
+        # )
+
+        # plt.show()
 
 
 def get_params(opt_over, net, net_input, downsampler=None):
@@ -248,8 +285,8 @@ def get_params(opt_over, net, net_input, downsampler=None):
 
 def build_video(video_tensor):
     """the input tensor should be bewteen 0 and 100 (scale of pixel) (at least now for luminance)"""
+    print("Building video.")
     size = video_tensor.shape[2], video_tensor.shape[3]
-    print(size)
     fps = 30
     out = cv2.VideoWriter(
         "output.mp4", cv2.VideoWriter_fourcc(*"mp4v"), fps, (size[1], size[0]), True
@@ -263,6 +300,6 @@ def build_video(video_tensor):
             .detach()
             .numpy()
         )
-        print(data.shape)
         out.write(data)
     out.release()
+    print("Video built.")
