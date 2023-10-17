@@ -186,7 +186,7 @@ class DVP(Video):
     def output_to_rgb(self, out):
         out_rgb = out.clone()
         out_rgb[0, 0, 0, :] = 50 * (out_rgb[0, 0, :] + 1)
-        out_rgb[0, 0, 1:, :] = 74 * (out_rgb[0, 0, :] + 1)
+        out_rgb[0, 0, 1:, :] = 128 * out_rgb[0, 0, :]
         out_rgb = kornia.color.lab_to_rgb(out_rgb)
         return out_rgb
 
