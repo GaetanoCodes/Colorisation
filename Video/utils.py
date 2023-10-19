@@ -167,8 +167,8 @@ class DVP(Video):
         mask = torch.ones(
             size=[1, 3, self.frame_number, self.size[0], self.size[1]]
         ).type(torch.bool)
-        first_unknown = 10
-        last_unkown = 11
+        first_unknown = 5
+        last_unkown = 10
         mask[:, 1:, first_unknown:last_unkown, :] = 0
         return mask.to(self.dev)
 
@@ -203,18 +203,40 @@ class DVP(Video):
         return out_rgb
 
     def build_output_video(self):
-        out = self.out.permute(0, 2, 1, 3, 4).clone()  # out
+        out = self.out.clone()
+        out = out.permute(0, 2, 1, 3, 4)  # out
+        out[0, :, 0, :] = self.video_lab_1_resized[: self.frame_number, 0, :]
         out_rgb = self.output_to_rgb(out) / 100
         build_video(out_rgb, name="test")
+
+    def build_target_video(self):
+        out = self.target.clone()
+        out = out.permute(0, 2, 1, 3, 4)  # out
+        out[0, :, 0, :] = self.video_lab_1_resized[: self.frame_number, 0, :]
+        out_rgb = self.output_to_rgb(out) / 100
+        build_video(out_rgb, name="hehe")
 
     def closure(self, method="propagation"):
         if method == "propagation":
             self.out = self.unet(self.input)
-            total_loss = self.loss_fn(
+            loss_mask = self.loss_fn(
                 self.out * self.mask + (~self.mask) * 0.5, self.target
             )
+            loss_lum = self.loss_fn(self.out[0, 0, :], self.target[0, 0, :])
+            total_loss = loss_mask + loss_lum
             total_loss.backward()
+            print("closure", self.out.shape, self.target.shape)
             return
+
+    def plot_an_image(self, frame=5):
+        out = self.target.permute(0, 2, 1, 3, 4).clone()  # out
+        # print("Min and max of target", out.min(), out.max())
+
+        out_rgb = self.output_to_rgb(out) / 100
+        plt.imshow(
+            out_rgb[0, frame].permute(1, 2, 0).cpu().detach().numpy(), cmap="gray"
+        )
+        plt.show()
 
     def optimize(self, LR, num_iter):
         """Runs optimization loop.
@@ -310,7 +332,6 @@ def get_params(opt_over, net, net_input, downsampler=None):
 
 
 def build_video(video_tensor, name="output"):
-    """the input tensor should be bewteen 0 and 100 (scale of pixel) (at least now for luminance)"""
     print("Building video.")
     size = video_tensor.shape[3], video_tensor.shape[4]
     fps = 30
@@ -318,6 +339,7 @@ def build_video(video_tensor, name="output"):
         f"{name}.mp4", cv2.VideoWriter_fourcc(*"mp4v"), fps, (size[1], size[0]), True
     )
     print("Video", video_tensor.min(), video_tensor.max())
+    print((video_tensor * 255).shape)
     for i in range(video_tensor.shape[1]):
         data = (
             (video_tensor[0, i, :] * 255)
