@@ -45,6 +45,7 @@ class UNet(nn.Module):
         self.up3 = Up(self.channels[2], self.channels[1] // factor, trilinear)
         self.up4 = Up(self.channels[1], self.channels[0], trilinear)
         self.outc = OutConv(self.channels[0], n_classes)
+        self.sigm = nn.Sigmoid()
 
     def forward(self, x):
         x1 = self.inc(x)
@@ -64,7 +65,9 @@ class UNet(nn.Module):
         x = self.up3(x, x2)
         x = self.up4(x, x1)
         logits = self.outc(x)
-        return logits
+        sig = self.sigm(logits)
+
+        return sig
 
 
 class DoubleConv(nn.Module):

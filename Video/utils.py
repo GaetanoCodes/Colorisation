@@ -47,6 +47,8 @@ class Video:
         self.dev = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
+        self.first_unknown = 10
+        self.last_unkown = 11
         self.path = path
         self.video_color, self.fps = self.path_to_tensor_and_fps()
         self.video = self.video_color[:, 0, :]
@@ -56,8 +58,12 @@ class Video:
         self.video_rgb_1_resized = self.video_rgb_to_1()
         self.video_lab_128_resized = self.video_lab_to_128()
         self.video_lab_1_resized = self.video_lab_to_1()
-        print(self.video_lab_1_resized.shape)
-        print(self.video_lab_1_resized.min(), self.video_lab_1_resized.max())
+        # print(self.video_lab_1_resized.shape)
+        # print(
+        #     "Minimum of lab 1",
+        #     self.video_lab_1_resized.min(),
+        #     self.video_lab_1_resized.max(),
+        # )
 
     def path_to_tensor_and_fps(self):
         video = cv2.VideoCapture(self.path)
@@ -77,7 +83,7 @@ class Video:
         print(f"    - FPS : {fps}.")
         frames = frames.permute(0, 3, 1, 2)
         print(frames.shape)
-        return frames.to(self.dev), fps
+        return frames.type(self.dtype).to(self.dev), fps
 
     def normalize_video_to_100(self, original_max=255):
         video_norm = (100 / original_max) * self.video
@@ -86,6 +92,7 @@ class Video:
     def resize_video(self):
         # revoir la méthode pour qu'il prenne un tenseur 5d
         print(self.video_color.shape)
+        print(self.video_color.type())
         video_chr_a = self.video_color[:, 1, :]
         video_chr_b = self.video_color[:, 2, :]
         video_l = self.video_color[:, 0, :]
@@ -145,47 +152,43 @@ class DVP(Video):
     def __init__(self, path, GPU=False, size=(256, 256), frame_number=16):
         super().__init__(path, size=size, GPU=GPU)
 
-        self.unet = UNet(1, 1, width_multiplier=0.5, trilinear=True, use_ds_conv=False)
+        self.unet = UNet(3, 3, width_multiplier=0.5, trilinear=True, use_ds_conv=False)
         if torch.cuda.is_available():
             self.unet.cuda()
-        self.size = (256, 256)
+        self.size = size
         self.loss_fn = torch.nn.MSELoss()
         self.frame_number = frame_number
 
         self.input = self.get_input()
         self.mask = self.get_mask()
         self.target = self.get_target()
-        # self.video_centered = self.video_center(self.video_resized)
-        # self.target = self.video_centered[:frame_number][None, :][None, :]
-
-    def video_center(self, video_array, direction="center"):
-        if direction == "center":
-            video_center = video_array / 50 - 1
-            return video_center
-        else:
-            video_decenter = ((video_array + 1) * 50).astype(int)
-            return video_decenter
 
     def get_mask(self):
-        mask = torch.ones(size=[self.frame_number, 3, self.size[0], self.size[1]])
+        mask = torch.ones(
+            size=[1, 3, self.frame_number, self.size[0], self.size[1]]
+        ).type(torch.bool)
         first_unknown = 10
         last_unkown = 11
-        mask[first_unknown:last_unkown, 1:, :] = 0
-        return mask
+        mask[:, 1:, first_unknown:last_unkown, :] = 0
+        return mask.to(self.dev)
 
-    def get_target(self, method="propagation"):
-        print("LAB 1", self.video_lab_1_resized.max())
+    def get_target(self, method="propagation") -> torch.Tensor:
         if method == "propagation":
-            target = self.video_lab_1_resized[: self.frame_number] * 2 - 1
-            target = target * self.mask
+            target = self.video_lab_1_resized[: self.frame_number][None, :].permute(
+                0, 2, 1, 3, 4
+            )
+            target = target * self.mask + (~self.mask) * 0.5
+            target = target
             return target.clone()
+        else:
+            return torch.ones(1)
 
     def get_input(self):
         size = self.size
         frame_N = self.frame_number
 
         input_ = (
-            torch.Tensor(np.random.rand(1, 1, frame_N, size[0], size[1]))
+            torch.Tensor(np.random.rand(1, 3, frame_N, size[0], size[1]))
             .type(self.dtype)
             .to(self.dev)
         )
@@ -193,25 +196,23 @@ class DVP(Video):
 
     def output_to_rgb(self, out):
         out_rgb = out.clone()
-        out_rgb[:, 0, :] = 50 * (out_rgb[:, 0, :] + 1)
-        print()
-        out_rgb[:, 1:, :] = 128 * out_rgb[:, 1:, :]
+        out_rgb[:, :, 0, :] = 100 * (out_rgb[:, :, 0, :])
+        out_rgb[:, :, 1:, :] = 128 * (2 * out_rgb[:, :, 1:, :] - 1)
         out_rgb = kornia.color.lab_to_rgb(out_rgb)
-        plt.imshow(out_rgb[0].permute(1, 2, 0).cpu().detach().numpy())
-        plt.show()
         out_rgb = 100 * out_rgb
         return out_rgb
 
     def build_output_video(self):
-        # out = self.out.clone()
-        out = self.target
+        out = self.out.permute(0, 2, 1, 3, 4).clone()  # out
         out_rgb = self.output_to_rgb(out) / 100
         build_video(out_rgb, name="test")
 
     def closure(self, method="propagation"):
         if method == "propagation":
             self.out = self.unet(self.input)
-            total_loss = self.loss_fn(self.out * self.mask, self.target)
+            total_loss = self.loss_fn(
+                self.out * self.mask + (~self.mask) * 0.5, self.target
+            )
             total_loss.backward()
             return
 
@@ -236,8 +237,16 @@ class DVP(Video):
             optimizer.step()
             if j % 10 == 0:
                 print(f"Step {j}")
+                out = self.out.permute(0, 2, 1, 3, 4).clone()  # out
+                # print("Min and max of target", out.min(), out.max())
 
-        output = self.unet(self.input)
+                out_rgb = self.output_to_rgb(out) / 100
+                plt.imshow(
+                    out_rgb[0, 0].permute(1, 2, 0).cpu().detach().numpy(), cmap="gray"
+                )
+                plt.show()
+
+        # output = self.unet(self.input)
 
         # plt.figure(figsize=(24, 80))
         # video_list1 = [
@@ -303,14 +312,15 @@ def get_params(opt_over, net, net_input, downsampler=None):
 def build_video(video_tensor, name="output"):
     """the input tensor should be bewteen 0 and 100 (scale of pixel) (at least now for luminance)"""
     print("Building video.")
-    size = video_tensor.shape[2], video_tensor.shape[3]
+    size = video_tensor.shape[3], video_tensor.shape[4]
     fps = 30
     out = cv2.VideoWriter(
         f"{name}.mp4", cv2.VideoWriter_fourcc(*"mp4v"), fps, (size[1], size[0]), True
     )
-    for i in range(video_tensor.shape[0]):
+    print("Video", video_tensor.min(), video_tensor.max())
+    for i in range(video_tensor.shape[1]):
         data = (
-            (video_tensor[i, :] * 255)
+            (video_tensor[0, i, :] * 255)
             .permute(1, 2, 0)
             .type(torch.uint8)
             .cpu()
