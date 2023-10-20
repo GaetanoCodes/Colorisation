@@ -39,7 +39,7 @@ BASE_COLOR = BaseColor()
 
 
 class Video:
-    def __init__(self, path, size=(256, 256), GPU=True):
+    def __init__(self, path, size=(256, 256), GPU=True, first=5, last=10):
         if GPU:
             self.dtype = torch.cuda.FloatTensor
         else:
@@ -48,7 +48,7 @@ class Video:
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
         self.first_unknown = 10
-        self.last_unkown = 11
+        self.last_unknown = 11
         self.path = path
         self.video_color, self.fps = self.path_to_tensor_and_fps()
         self.video = self.video_color[:, 0, :]
@@ -149,8 +149,10 @@ class Video:
 
 
 class DVP(Video):
-    def __init__(self, path, GPU=False, size=(256, 256), frame_number=16):
-        super().__init__(path, size=size, GPU=GPU)
+    def __init__(
+        self, path, GPU=False, size=(256, 256), frame_number=16, first=5, last=10
+    ):
+        super().__init__(path, size=size, GPU=GPU, first=first, last=last)
 
         self.unet = UNet(3, 3, width_multiplier=0.5, trilinear=True, use_ds_conv=False)
         if torch.cuda.is_available():
@@ -168,8 +170,8 @@ class DVP(Video):
             size=[1, 3, self.frame_number, self.size[0], self.size[1]]
         ).type(torch.bool)
         first_unknown = 5
-        last_unkown = 10
-        mask[:, 1:, first_unknown:last_unkown, :] = 0
+        last_unknown = 10
+        mask[:, 1:, first_unknown:last_unknown, :] = 0
         return mask.to(self.dev)
 
     def get_target(self, method="propagation") -> torch.Tensor:
@@ -208,6 +210,12 @@ class DVP(Video):
         out[0, :, 0, :] = self.video_lab_1_resized[: self.frame_number, 0, :]
         out_rgb = self.output_to_rgb(out) / 100
         build_video(out_rgb, name="test")
+
+        out = self.out.clone()
+        out = out.permute(0, 2, 1, 3, 4)  # out
+        out[0, :, 0, :] = self.video_lab_1_resized[: self.frame_number, 0, :]
+        out_rgb = self.output_to_rgb(out) / 100
+        build_video(out_rgb, name="chr_output")
 
     def build_target_video(self):
         out = self.target.clone()
