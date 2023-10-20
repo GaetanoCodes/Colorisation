@@ -209,20 +209,25 @@ class DVP(Video):
         out = out.permute(0, 2, 1, 3, 4)  # out
         out[0, :, 0, :] = self.video_lab_1_resized[: self.frame_number, 0, :]
         out_rgb = self.output_to_rgb(out) / 100
-        build_video(out_rgb, name="test")
+        build_video(out_rgb, name="output")
 
         out = self.out.clone()
         out = out.permute(0, 2, 1, 3, 4)  # out
-        out[0, :, 0, :] = self.video_lab_1_resized[: self.frame_number, 0, :]
+        out[0, :, 0, :] = 0.5  # self.video_lab_1_resized[: self.frame_number, 0, :]
         out_rgb = self.output_to_rgb(out) / 100
         build_video(out_rgb, name="chr_output")
 
     def build_target_video(self):
         out = self.target.clone()
         out = out.permute(0, 2, 1, 3, 4)  # out
-        out[0, :, 0, :] = self.video_lab_1_resized[: self.frame_number, 0, :]
         out_rgb = self.output_to_rgb(out) / 100
-        build_video(out_rgb, name="hehe")
+        build_video(out_rgb, name="target")
+
+        out = self.target.clone()
+        out = out.permute(0, 2, 1, 3, 4)  # out
+        out[0, :, 0, :] = 0.5
+        out_rgb = self.output_to_rgb(out) / 100
+        build_video(out_rgb, name="target_chr")
 
     def closure(self, method="propagation"):
         if method == "propagation":
