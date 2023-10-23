@@ -156,9 +156,16 @@ class Video:
 
 class DVP(Video):
     def __init__(
-        self, path, GPU=False, size=(256, 256), frame_number=16, first=5, last=10
+        self,
+        path,
+        GPU=False,
+        size=(256, 256),
+        frame_number=16,
+        first=5,
+        last=10,
+        show_every=10,
     ):
-        print(os.listdir())
+        # print(os.listdir())
         super().__init__(path, size=size, GPU=GPU, first=first, last=last)
 
         self.unet = UNet(3, 3, width_multiplier=0.5, trilinear=True, use_ds_conv=False)
@@ -169,6 +176,7 @@ class DVP(Video):
         self.frame_number = frame_number
 
         self.create_output_folder()
+        self.show_every = show_every
 
         self.input = self.get_input()
         self.mask = self.get_mask()
@@ -177,7 +185,7 @@ class DVP(Video):
     def create_output_folder(self):
         # datetime object containing current date and time
         now = datetime.now()
-        print("now =", now)
+        # print("now =", now)
         # dd/mm/YY H:M:S
         dt_string = now.strftime("%d_%m_%Y %H_%M_%S")
         self.output_folder = f"Output_{dt_string}"
@@ -256,7 +264,7 @@ class DVP(Video):
             loss_lum = self.loss_fn(self.out[0, 0, :], self.target[0, 0, :])
             total_loss = loss_mask + loss_lum
             total_loss.backward()
-            print("closure", self.out.shape, self.target.shape)
+            # print("closure", self.out.shape, self.target.shape)
             return
 
     def plot_an_image(self, frame=5):
@@ -288,7 +296,7 @@ class DVP(Video):
             optimizer.zero_grad()
             self.closure()
             optimizer.step()
-            if j % 10 == 0:
+            if j % self.show_every == 0:
                 print(f"Step {j}")
                 out = self.out.permute(0, 2, 1, 3, 4).clone()  # out
                 # print("Min and max of target", out.min(), out.max())
