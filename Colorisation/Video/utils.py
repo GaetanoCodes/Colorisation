@@ -6,6 +6,10 @@ import matplotlib.pyplot as plt
 from .dip_model.model import UNet
 import kornia
 import torch.nn as nn
+import os
+from datetime import datetime
+
+# datetime object containing current date and time
 
 
 class BaseColor(nn.Module):
@@ -66,6 +70,8 @@ class Video:
         # )
 
     def path_to_tensor_and_fps(self):
+        print(os.listdir())
+
         video = cv2.VideoCapture(self.path)
         # Get the FPS of the video
         fps = int(video.get(cv2.CAP_PROP_FPS))
@@ -152,6 +158,7 @@ class DVP(Video):
     def __init__(
         self, path, GPU=False, size=(256, 256), frame_number=16, first=5, last=10
     ):
+        print(os.listdir())
         super().__init__(path, size=size, GPU=GPU, first=first, last=last)
 
         self.unet = UNet(3, 3, width_multiplier=0.5, trilinear=True, use_ds_conv=False)
@@ -161,9 +168,20 @@ class DVP(Video):
         self.loss_fn = torch.nn.MSELoss()
         self.frame_number = frame_number
 
+        self.create_output_folder()
+
         self.input = self.get_input()
         self.mask = self.get_mask()
         self.target = self.get_target()
+
+    def create_output_folder(self):
+        # datetime object containing current date and time
+        now = datetime.now()
+        print("now =", now)
+        # dd/mm/YY H:M:S
+        dt_string = now.strftime("%d_%m_%Y %H_%M_%S")
+        self.output_folder = f"Output_{dt_string}"
+        os.mkdir(self.output_folder)
 
     def get_mask(self):
         mask = torch.ones(
@@ -209,25 +227,25 @@ class DVP(Video):
         out = out.permute(0, 2, 1, 3, 4)  # out
         out[0, :, 0, :] = self.video_lab_1_resized[: self.frame_number, 0, :]
         out_rgb = self.output_to_rgb(out) / 100
-        build_video(out_rgb, name="output")
+        build_video(out_rgb, name=f"{self.output_folder}/output")
 
         out = self.out.clone()
         out = out.permute(0, 2, 1, 3, 4)  # out
         out[0, :, 0, :] = 0.5  # self.video_lab_1_resized[: self.frame_number, 0, :]
         out_rgb = self.output_to_rgb(out) / 100
-        build_video(out_rgb, name="chr_output")
+        build_video(out_rgb, name=f"{self.output_folder}/chr_output")
 
     def build_target_video(self):
         out = self.target.clone()
         out = out.permute(0, 2, 1, 3, 4)  # out
         out_rgb = self.output_to_rgb(out) / 100
-        build_video(out_rgb, name="target")
+        build_video(out_rgb, name=f"{self.output_folder}/target")
 
         out = self.target.clone()
         out = out.permute(0, 2, 1, 3, 4)  # out
         out[0, :, 0, :] = 0.5
         out_rgb = self.output_to_rgb(out) / 100
-        build_video(out_rgb, name="target_chr")
+        build_video(out_rgb, name=f"{self.output_folder}/target_chr")
 
     def closure(self, method="propagation"):
         if method == "propagation":
