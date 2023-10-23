@@ -51,8 +51,8 @@ class Video:
         self.dev = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
-        self.first_unknown = 10
-        self.last_unknown = 11
+        self.first_unknown = first
+        self.last_unknown = last
         self.path = path
         self.video_color, self.fps = self.path_to_tensor_and_fps()
         self.video = self.video_color[:, 0, :]
@@ -195,8 +195,8 @@ class DVP(Video):
         mask = torch.ones(
             size=[1, 3, self.frame_number, self.size[0], self.size[1]]
         ).type(torch.bool)
-        first_unknown = 5
-        last_unknown = 10
+        first_unknown = self.first_unknown
+        last_unknown = self.last_unknown
         mask[:, 1:, first_unknown:last_unknown, :] = 0
         return mask.to(self.dev)
 
