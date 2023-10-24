@@ -258,10 +258,24 @@ class DVP(Video):
     def closure(self, method="propagation"):
         if method == "propagation":
             self.out = self.unet(self.input)
-            loss_mask = self.loss_fn(
-                self.out * self.mask + (~self.mask) * 0.5, self.target
+            # mask_perm = self.mask.permute(0, 2, 1, 3, 4)
+            print("Mask, Out", self.out.shape, self.mask.shape)
+            # loss_mask = self.loss_fn(
+            #     self.out * self.mask + (~self.mask) * 0.5, self.target
+            # )  # il y  a un masque aussi sur la luminance
+            list_frames = list(
+                [
+                    i
+                    for i in range(self.frame_number)
+                    if (i < self.first_unknown) or (i >= self.last_unknown)
+                ]
             )
-            loss_lum = self.loss_fn(self.out[0, 0, :], self.target[0, 0, :])
+
+            loss_mask = self.loss_fn(
+                self.out[0, 1:, list_frames],
+                self.target[0, 1:, list_frames],
+            )
+            loss_lum = 1 * self.loss_fn(self.out[0, 0, :], self.target[0, 0, :])
             total_loss = loss_mask + loss_lum
             total_loss.backward()
             # print("closure", self.out.shape, self.target.shape)

@@ -8,3 +8,6 @@ if __name__ == "__main__":
     video.build_output_video()
     video.build_target_video()
     # TODO:enelever les print, faire un dossier de sauvegarde des outputs avec date et heure
+    # le mask ne va pas,  on en fait aussi sur la luminance
+    # dans la loss, essayer de contraindre que les chr, i.e.
+    # loss_fn(out[1:, list_frames_connues], target[1:, list_frames_connues])
