@@ -81,7 +81,8 @@ class ECCVImage:
         luminance_256 (torch.tensor): Resized luminance channel of the input image (256x256).
         luminance_64 (torch.tensor): Resized luminance channel of the input image (64x64).
         proba_distrib (torch.tensor): Output probability distribution from the ECCV model.
-        proba_chrom_norm (torch.tensor): Normalized chrominance channels derived from the ECCV output.
+        proba_chrom_norm (torch.tensor): Normalized chrominance channels
+            derived from the ECCV output.
         proba_chrom_unnorm (torch.tensor): Unnormalized chrominance channels.
         chrom_mean_unnorm (torch.tensor): Mean chrominance values for each pixel.
         lab_mean_64 (torch.tensor): Combined LAB representation at 64x64 resolution.
@@ -157,7 +158,8 @@ class ECCVImage:
         # Convert the LAB representation to RGB.
         self.rgb_mean = kornia.color.lab_to_rgb(self.lab_mean_64)
 
-        # Upsample the LAB representation to 256x256 and replace luminance with the higher-resolution version.
+        # Upsample the LAB representation to 256x256 and replace
+        # luminance with the higher-resolution version.
         self.output_upsampled = upsample(self.lab_mean_64)
         self.output_upsampled[:, [0], :] = self.luminance_256
 
@@ -236,16 +238,16 @@ class LoriaImageColorization(ECCVImage):
         total_loss.backward(retain_graph=True)
         return total_loss
 
-    def optimize(self, LR, num_iter):
+    def optimize(self, lr, num_iter):
         """
         Runs the optimization loop for the DIP network.
 
         Args:
-            LR (float): Learning rate.
+            lr (float): Learning rate.
             num_iter (int): Number of optimization iterations.
         """
         parameters = get_params("net", self.dip_net, self.dip_input)
-        optimizer = torch.optim.Adam(parameters, lr=LR)
+        optimizer = torch.optim.Adam(parameters, lr=lr)
 
         for j in range(num_iter):
             optimizer.zero_grad()
