@@ -1,4 +1,4 @@
-from Colorisation.Video.utils import Video, build_video, DVP
+from src.Video.utils import Video, build_video, DVP
 
 if __name__ == "__main__":
     path = "Colorisation/Video/videos/Poisson.mp4"
