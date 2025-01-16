@@ -5,10 +5,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
+import tqdm
 
 from src.coef_chrominance import COEFS
-from src.dip_models import get_net
-from src.dip_models.downsampler import Downsampler
+from src.dip import get_net
+from src.dip.downsampler import Downsampler
 from src.eccv16 import BaseColor, eccv16
 from src.utils import get_params, resize_image, upsample
 
@@ -182,6 +183,7 @@ class ECCVImage:
         plt.imshow(rgb256[0, :].cpu().permute(1, 2, 0).detach().numpy())
         plt.axis("off")
         plt.gca().set_aspect("equal")
+        plt.savefig("output_eccv.png")
         plt.show()
 
 
@@ -257,9 +259,8 @@ class LoriaImageColorization(ECCVImage):
         print("Starting optimization with ADAM")
         optimizer = torch.optim.Adam(parameters, lr=lr)
         print("Nombre d'itérations total :", num_iter)
-        print("Optimization")
-        for j in range(num_iter):
-            # print(j)
+        print("Optimization...")
+        for j in tqdm.tqdm(range(num_iter)):
             if j < 800 or (j % 200 != 0):
                 optimizer.zero_grad()
                 self.closure(j)
@@ -268,10 +269,7 @@ class LoriaImageColorization(ECCVImage):
                 new_target = self.projection_chrom(self.downsampler(self.out))
                 new_target[0, 0, :] = self.luminance_64.clone().detach() / 100
                 self.target_dip = new_target.clone().detach()
-
-            if j % int(0.1 * num_iter) == 0:
-                print(f"  => {int(0.1 * num_iter)}")
-        print("Optimzation done.")
+        print("Optimzation done!")
 
     def loss_coupled_tv(self, out, gamma=100):
         """
@@ -379,8 +377,8 @@ class LoriaImageColorization(ECCVImage):
         plt.figure(figsize=(10, 10))
         plt.title("Output of our method")
         plt.imshow(out_original_size_rgb[0, :].cpu().permute(1, 2, 0).detach().numpy())
-        plt.savefig("output.png")
         plt.axis("off")
+        plt.savefig("output.png")
         plt.gca().set_aspect("equal")
         plt.show()
         return

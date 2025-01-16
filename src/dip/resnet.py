@@ -1,10 +1,13 @@
+from math import sqrt
+
 import torch
 import torch.nn as nn
-from numpy.random import normal
-from numpy.linalg import svd
-from math import sqrt
 import torch.nn.init
-from .common import *
+from numpy.linalg import svd
+from numpy.random import normal
+
+from src.dip.common import *
+
 
 class ResidualSequential(nn.Sequential):
     def __init__(self, *args):
@@ -18,7 +21,12 @@ class ResidualSequential(nn.Sequential):
             diff2 = x.size(2) - out.size(2)
             diff3 = x.size(3) - out.size(3)
             # print(1)
-            x_ = x[:, :, diff2 /2:out.size(2) + diff2 / 2, diff3 / 2:out.size(3) + diff3 / 2]
+            x_ = x[
+                :,
+                :,
+                diff2 / 2 : out.size(2) + diff2 / 2,
+                diff3 / 2 : out.size(3) + diff3 / 2,
+            ]
         else:
             x_ = x
         return out + x_
@@ -42,10 +50,21 @@ def get_block(num_channels, norm_layer, act_fun):
 
 
 class ResNet(nn.Module):
-    def __init__(self, num_input_channels, num_output_channels, num_blocks, num_channels, need_residual=True, act_fun='LeakyReLU', need_sigmoid=True, norm_layer=nn.BatchNorm2d, pad='reflection'):
-        '''
-            pad = 'start|zero|replication'
-        '''
+    def __init__(
+        self,
+        num_input_channels,
+        num_output_channels,
+        num_blocks,
+        num_channels,
+        need_residual=True,
+        act_fun="LeakyReLU",
+        need_sigmoid=True,
+        norm_layer=nn.BatchNorm2d,
+        pad="reflection",
+    ):
+        """
+        pad = 'start|zero|replication'
+        """
         super(ResNet, self).__init__()
 
         if need_residual:
@@ -58,16 +77,16 @@ class ResNet(nn.Module):
         layers = [
             # nn.ReplicationPad2d(num_blocks * 2 * stride + 3),
             conv(num_input_channels, num_channels, 3, stride=1, bias=True, pad=pad),
-            act(act_fun)
+            act(act_fun),
         ]
         # Residual blocks
         # layers_residual = []
         for i in range(num_blocks):
             layers += [s(*get_block(num_channels, norm_layer, act_fun))]
-       
+
         layers += [
             nn.Conv2d(num_channels, num_channels, 3, 1, 1),
-            norm_layer(num_channels, affine=True)
+            norm_layer(num_channels, affine=True),
         ]
 
         # if need_residual:
@@ -75,7 +94,7 @@ class ResNet(nn.Module):
         # else:
         #     layers += [Sequential(*layers_residual)]
 
-        # if factor >= 2: 
+        # if factor >= 2:
         #     # Do upsampling if needed
         #     layers += [
         #         nn.Conv2d(num_channels, num_channels *
@@ -85,7 +104,7 @@ class ResNet(nn.Module):
         #     ]
         layers += [
             conv(num_channels, num_output_channels, 3, 1, bias=True, pad=pad),
-            nn.Sigmoid()
+            nn.Sigmoid(),
         ]
         self.model = nn.Sequential(*layers)
 

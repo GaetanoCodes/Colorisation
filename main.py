@@ -9,12 +9,10 @@ from src.image_colorization import LoriaImageColorization
 
 def main():
     """main"""
-    image = torch.tensor(
-        np.array(Image.open("src/images/lion_fabien.jpg"))
-    )  # [:, :, 0]
+    image = torch.tensor(np.array(Image.open("src/images/lion.jpg")))
     loria_colorizer = LoriaImageColorization(image)
     loria_colorizer.plot_eccv()
-    loria_colorizer.optimize(0.02, 1000)
+    loria_colorizer.optimize(0.02, 5)
     loria_colorizer.plot_result()
 
 
