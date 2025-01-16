@@ -4,6 +4,7 @@ import kornia
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 from .coef_chrominance import COEFS
 from .dip_models import get_net
@@ -16,7 +17,7 @@ if GPU:
     # DTYPE = torch.cuda.FloatTensor
     DTYPE = torch.float64
 else:
-    DTYPE = torch.float64
+    DTYPE = torch.float
 
 DEV = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -223,6 +224,7 @@ class LoriaImageColorization(ECCVImage):
 
         # Define loss function.
         self.loss_fn = torch.nn.MSELoss()
+        self.out = torch.zeros(0)
 
     def closure(self, num_iter_active):
         """
@@ -234,10 +236,10 @@ class LoriaImageColorization(ECCVImage):
         if num_iter_active:
             pass
         # Generate the DIP output.
-        out = self.dip_net(self.dip_input)
+        self.out = self.dip_net(self.dip_input)
 
         # Compute total loss with coupled TV and backward propagation.
-        total_loss = self.loss_coupled_tv(out)
+        total_loss = self.loss_coupled_tv(self.out)
         total_loss.backward(retain_graph=True)
         return total_loss
 
@@ -253,6 +255,7 @@ class LoriaImageColorization(ECCVImage):
         optimizer = torch.optim.Adam(parameters, lr=lr)
 
         for j in range(num_iter):
+            print(j)
             optimizer.zero_grad()
             self.closure(j)
             optimizer.step()
@@ -303,12 +306,30 @@ class LoriaImageColorization(ECCVImage):
             torch.Tensor: Initialized LAB image.
         """
         coefs_to_128 = 0.5 * (COEFS.to(DEV) + 1)
+        coefs_a = coefs_to_128[:, 0]
+        coefs_b = coefs_to_128[:, 1]
+        coefs_a = coefs_a[None, :, None, None] * self.ones
+        coefs_b = coefs_b[None, :, None, None] * self.ones
+
         ind_max = torch.argmax(self.proba_distrib, axis=1)
-        chr_a = torch.gather(coefs_to_128[:, 0], 1, ind_max.unsqueeze(2)).squeeze(2)
-        chr_b = torch.gather(coefs_to_128[:, 1], 1, ind_max.unsqueeze(2)).squeeze(2)
+        chr_a = torch.gather(coefs_a, 1, ind_max.unsqueeze(2)).squeeze(2)
+        chr_b = torch.gather(coefs_b, 1, ind_max.unsqueeze(2)).squeeze(2)
 
         initialized = torch.ones(1, 3, 64, 64).to(DEV)
         initialized[:, 1, :, :] = chr_a
         initialized[:, 2, :, :] = chr_b
         initialized[:, 0, :, :] = self.luminance_64 / 100
         return initialized
+
+    def plot_result(self):
+        """plot the output result"""
+        original_size = (self.original_bw.shape[0], self.original_bw.shape[1])
+        out_original_size = F.interpolate(self.out.cpu(), size=original_size)
+        out_original_size[:, 0, :] = self.original_bw
+        out_original_size[:, 1:, :] = BASE_COLOR.ab_01_to_128(
+            out_original_size[:, 1:, :]
+        )
+        out_original_size_rgb = kornia.color.lab_to_rgb(out_original_size)
+        plt.imshow(out_original_size_rgb[0, :].cpu().permute(1, 2, 0).detach().numpy())
+        plt.show()
+        return
