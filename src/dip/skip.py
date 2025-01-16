@@ -136,9 +136,7 @@ def skip(
         model_tmp.add(act(act_fun))
 
         if need1x1_up:
-            model_tmp.add(
-                conv(num_channels_up[i], num_channels_up[i], 1, bias=need_bias, pad=pad)
-            )
+            model_tmp.add(conv(num_channels_up[i], num_channels_up[i], 1, bias=need_bias, pad=pad))
             model_tmp.add(bn(num_channels_up[i]))
             model_tmp.add(act(act_fun))
 

@@ -8,10 +8,10 @@ from src.image_colorization import LoriaImageColorization
 
 
 def main():
-    """main"""
-    lr = 0.02
+    """numerical example"""
+    lr = 0.02  #############################################################################################
     n_iter = 1000
-    image = torch.tensor(np.array(Image.open("src/images/papillon_resize.jpg")))
+    image = torch.tensor(np.array(Image.open("src/images/papillon.jpg")))
     loria_colorizer = LoriaImageColorization(image)
     loria_colorizer.plot_eccv()
     loria_colorizer.optimize(lr, n_iter)

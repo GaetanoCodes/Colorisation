@@ -1,6 +1,7 @@
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
+
 from src.dip.downsampler import Downsampler
 
 
@@ -109,9 +110,7 @@ def bn(num_features):
     return nn.BatchNorm2d(num_features)
 
 
-def conv(
-    in_f, out_f, kernel_size, stride=1, bias=True, pad="zero", downsample_mode="stride"
-):
+def conv(in_f, out_f, kernel_size, stride=1, bias=True, pad="zero", downsample_mode="stride"):
     downsampler = None
     if stride != 1 and downsample_mode != "stride":
         if downsample_mode == "avg":

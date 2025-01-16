@@ -1,4 +1,8 @@
 __pycache__
 
 *.ipynb
+
 Frame_Colorisatioon/output/
+
+output.png
+output_eccv.png
