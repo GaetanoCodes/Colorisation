@@ -13,7 +13,7 @@ def main():
     )  # [:, :, 0]
     loria_colorizer = LoriaImageColorization(image)
     loria_colorizer.plot_eccv()
-    loria_colorizer.optimize(0.02, 5)
+    loria_colorizer.optimize(0.02, 400)
     loria_colorizer.plot_result()
 
 
