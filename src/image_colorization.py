@@ -6,16 +6,18 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from .coef_chrominance import COEFS
-from .dip_models import get_net
-from .dip_models.downsampler import Downsampler
-from .eccv16 import BaseColor, eccv16
-from .utils import get_params, resize_image, upsample
+from src.coef_chrominance import COEFS
+from src.dip_models import get_net
+from src.dip_models.downsampler import Downsampler
+from src.eccv16 import BaseColor, eccv16
+from src.utils import get_params, resize_image, upsample
 
 GPU = torch.cuda.is_available()
 if GPU:
+    # pylint: disable=E1101
     DTYPE = torch.cuda.FloatTensor
-    # DTYPE = torch.float64
+    # pylint: enable=E1101
+
 else:
     DTYPE = torch.float
 
@@ -332,13 +334,12 @@ class LoriaImageColorization(ECCVImage):
         initialized[:, 0, :, :] = self.luminance_64 / 100
         return initialized
 
-    def projection_chrom(self, image, k=313):
+    def projection_chrom(self, image):
         """
         Projette les chrominances d'une image sur un ensemble discret de valeurs pré-définies.
 
         Args:
             image: Image en espace Lab.
-            k: Nombre de classes pour la projection.
 
         Returns:
             Image avec chrominances projetées.
