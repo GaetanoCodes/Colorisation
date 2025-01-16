@@ -1,9 +1,10 @@
-import matplotlib.pyplot as plt
+"""main"""
+
 import numpy as np
 import torch
 from PIL import Image
 
-from src.image_colorization import ECCVImage, LoriaImageColorization
+from src.image_colorization import LoriaImageColorization
 
 
 def main():
