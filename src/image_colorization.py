@@ -26,16 +26,19 @@ class Colorizer:
     A class for image colorization using a pre-trained ECCV16 neural network.
 
     Attributes:
-        eccv (torch.nn.Module): An instance of the ECCV16 neural network model pre-trained for colorization.
+        eccv (torch.nn.Module): An instance of the ECCV16 neural network model
+            pre-trained for colorization.
         colorizer (torch.nn.Module): The ECCV16 model in evaluation mode.
 
     Methods:
         __init__():
             Initializes the Colorizer class, loads the pre-trained ECCV16 model,
-            and sets it to evaluation mode. If a GPU is available, the model is transferred to the GPU.
+            and sets it to evaluation mode. If a GPU is available, the model
+            is transferred to the GPU.
 
         __call__(image: torch.tensor) -> torch.tensor:
-            Performs colorization on the input grayscale image and returns the colorized image.
+            Performs colorization on the input grayscale image and
+            returns the colorized image.
     """
 
     def __init__(self):
@@ -309,6 +312,3 @@ class LoriaImageColorization(ECCVImage):
         initialized[:, 2, :, :] = chr_b
         initialized[:, 0, :, :] = self.luminance_64 / 100
         return initialized
-
-
-# TODO : qq chose ne va pas dans la proje ou dans l'affichage de la proj
