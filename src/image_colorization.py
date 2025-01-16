@@ -14,8 +14,8 @@ from .utils import get_params, resize_image, upsample
 
 GPU = torch.cuda.is_available()
 if GPU:
-    # DTYPE = torch.cuda.FloatTensor
-    DTYPE = torch.float64
+    DTYPE = torch.cuda.FloatTensor
+    # DTYPE = torch.float64
 else:
     DTYPE = torch.float
 
