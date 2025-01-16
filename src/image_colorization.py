@@ -79,6 +79,28 @@ COLORIZER = Colorizer()
 BASE_COLOR = BaseColor()
 
 
+def convert_to_single_channel(image):
+    """
+    Converts a black-and-white image with 3 dimensions to a single channel if it has 3 channels.
+
+    Args:
+        image (torch.Tensor): Input image tensor (C, H, W), (H, W, C), or (H, W).
+
+    Returns:
+        torch.Tensor: Single-channel image tensor.
+    """
+    if image.ndim == 3:  # Check if the image has 3 dimensions
+        # Check along each dimension to find the one with 3 channels
+        for dim in range(3):
+            if image.shape[dim] == 3:
+                return image.select(
+                    dim, 0
+                )  # Select the first channel along this dimension
+
+    # If the image doesn't have 3 dimensions or channels, return it unchanged
+    return image
+
+
 class ECCVImage:
     """
     A class for processing and colorizing grayscale images using the ECCV16 model.
@@ -120,8 +142,10 @@ class ECCVImage:
             - The input image is normalized to the range [0, 100] and resized for processing.
             - Chrominance channels are defined and processed via the ECCV model.
         """
+        black_image_single = convert_to_single_channel(black_image)
+
         # Normalize the input image and scale it to the range [0, 100].
-        black_image_norm = black_image.to(DEV) * (100 / 255)
+        black_image_norm = black_image_single.to(DEV) * (100 / 255)
         self.original_bw = black_image_norm
 
         # Resize the luminance channel to 256x256 and 64x64 for processing.
@@ -147,7 +171,6 @@ class ECCVImage:
         self.proba_distrib = torch.tensor(
             COLORIZER(self.luminance_256[None, None, :].to(DEV))
         )
-        print(self.proba_distrib.shape)
 
         # Compute normalized and unnormalized chrominance channels.
         self.proba_chrom_norm = torch.einsum(
@@ -177,10 +200,15 @@ class ECCVImage:
         Notes:
             - Converts the upsampled LAB image to RGB and displays it using Matplotlib.
         """
-        rgb256 = kornia.color.lab_to_rgb(self.output_upsampled)
+        print("here")
+        original_size = (self.original_bw.shape[0], self.original_bw.shape[1])
+        out_original_size = F.interpolate(self.lab_mean_64.cpu(), size=original_size)
+        out_original_size[:, 0, :] = self.original_bw
+        out_original_size_rgb = kornia.color.lab_to_rgb(out_original_size)
+        # rgb256 = kornia.color.lab_to_rgb(self.output_upsampled)
         plt.figure(figsize=(10, 10))
         plt.title("Colorization with ECCV16")
-        plt.imshow(rgb256[0, :].cpu().permute(1, 2, 0).detach().numpy())
+        plt.imshow(out_original_size_rgb[0, :].cpu().permute(1, 2, 0).detach().numpy())
         plt.axis("off")
         plt.gca().set_aspect("equal")
         plt.savefig("output_eccv.png")
