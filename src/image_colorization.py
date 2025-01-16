@@ -330,7 +330,11 @@ class LoriaImageColorization(ECCVImage):
             out_original_size[:, 1:, :]
         )
         out_original_size_rgb = kornia.color.lab_to_rgb(out_original_size)
+        plt.figure(figsize=(10, 10))
+        plt.title("Output of our method")
         plt.imshow(out_original_size_rgb[0, :].cpu().permute(1, 2, 0).detach().numpy())
         plt.savefig("output.png")
+        plt.axis("off")
+        plt.gca().set_aspect("equal")
         plt.show()
         return
