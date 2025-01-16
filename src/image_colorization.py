@@ -252,13 +252,24 @@ class LoriaImageColorization(ECCVImage):
             num_iter (int): Number of optimization iterations.
         """
         parameters = get_params("net", self.dip_net, self.dip_input)
+        print("Starting optimization with ADAM")
         optimizer = torch.optim.Adam(parameters, lr=lr)
-
+        print("Nombre d'itérations total :", num_iter)
+        print("Optimization")
         for j in range(num_iter):
-            print(j)
-            optimizer.zero_grad()
-            self.closure(j)
-            optimizer.step()
+            # print(j)
+            if j < 800 or (j % 200 != 0):
+                optimizer.zero_grad()
+                self.closure(j)
+                optimizer.step()
+            else:
+                new_target = self.projection_chrom(self.downsampler(self.out))
+                new_target[0, 0, :] = self.luminance_64.clone().detach() / 100
+                self.target_dip = new_target.clone().detach()
+
+            if j % int(0.1 * num_iter) == 0:
+                print(f"  => {int(0.1 * num_iter)}")
+        print("Optimzation done.")
 
     def loss_coupled_tv(self, out, gamma=100):
         """
@@ -320,6 +331,40 @@ class LoriaImageColorization(ECCVImage):
         initialized[:, 2, :, :] = chr_b
         initialized[:, 0, :, :] = self.luminance_64 / 100
         return initialized
+
+    def projection_chrom(self, image, k=313):
+        """
+        Projette les chrominances d'une image sur un ensemble discret de valeurs pré-définies.
+
+        Args:
+            image: Image en espace Lab.
+            k: Nombre de classes pour la projection.
+
+        Returns:
+            Image avec chrominances projetées.
+        """
+        coefs_to_128 = 0.5 * (COEFS.to(DEV) + 1)  # entre 0 et 1
+        coefs_a = coefs_to_128[:, 0]
+        coefs_b = coefs_to_128[:, 1]
+        coefs_a = coefs_a[None, :, None, None] * self.ones
+        coefs_b = coefs_b[None, :, None, None] * self.ones
+
+        ind_min = torch.argmin(
+            torch.pow(coefs_a - image[0, 1, :], 2)
+            + torch.pow(coefs_b - image[0, 2, :], 2),
+            dim=1,
+        )
+
+        projected_chrm_a = torch.gather(coefs_a, 1, ind_min.unsqueeze(2)).squeeze(2)
+        projected_chrm_b = torch.gather(coefs_b, 1, ind_min.unsqueeze(2)).squeeze(2)
+
+        projected = torch.ones(1, 3, 64, 64).to(DEV)
+        # il ne faut pas denormaliseer
+        projected[:, 1, :, :] = projected_chrm_a
+        projected[:, 2, :, :] = projected_chrm_b
+        projected[0, 0, :, :] = self.luminance_64 / 100
+
+        return projected
 
     def plot_result(self):
         """plot the output result"""
