@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="figures/title.png"   />
+  <img src="images/title.png"   />
 </p>
 
 [![Python badge](https://img.shields.io/badge/Python-3.11.11-0066cc?style=for-the-badge&logo=python&logoColor=yellow)](https://www.python.org/downloads/release/python-31111/)
@@ -25,19 +25,19 @@ An example can be found in the `main.py`.
 * Here are the chrominances channel for 2 images (Zhang *et al.* on the left and our method on the right). Out procedure allows recovering sharp contours.
 
 <p align="center">
-  <img src="figures/chr_oiseau_comparison.png"   width="600"  />
+  <img src="images/chr_oiseau_comparison.png"   width="600"  />
 <!-- </p>
 <p align="center"> -->
-  <img src="figures/chr_papillon_comparison.png"  width="600"  />
+  <img src="images/chr_papillon_comparison.png"  width="600"  />
 </p>
 
 * In the real images, our algorithm allows correcting halos created in the CNN of Zhang *et al.* and recover more realistic colors contained in the predicted probability distribution of Zhang *et al.*.
 
 <p align="center">
-  <img src="figures/lion.png"   width="600"  />
+  <img src="images/lion.png"   width="600"  />
 <!-- </p>
 <p align="center"> -->
-  <img src="figures/meduse.png"  width="600"  />
+  <img src="images/meduse.png"  width="600"  />
 </p>
 
 ## Interesting ? 
