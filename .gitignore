@@ -4,5 +4,7 @@ __pycache__
 
 Frame_Colorisatioon/output/
 
+*.egg-info
+
 output.png
 output_eccv.png

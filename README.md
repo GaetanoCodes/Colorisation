@@ -1,5 +1,6 @@
-# Deep image prior regularized by coupled total variation for image colorization 
-
+<p align="center">
+  <img src="figures/title.png"   />
+</p>
 
 [![Python badge](https://img.shields.io/badge/Python-3.11.11-0066cc?style=for-the-badge&logo=python&logoColor=yellow)](https://www.python.org/downloads/release/python-31111/)
 [![Pytorch badge](https://img.shields.io/badge/Pytorch-2.5-cc3300?style=for-the-badge&logo=pytorch)](https://pytorch.org/docs/2.5/)
@@ -9,6 +10,13 @@
 
 This code allows to reproduce the results of this [paper](https://hal.science/hal-04035467). 
 It compares the result given by Zhang *et al.* in the EECV paper [Colorful Image Colorization](https://richzhang.github.io/colorization/).
+
+
+## Installation
+A script is available for an easy creation of the conda environment and compilation of auxiliary functions:
+```bash
+$ source install.bash
+```
 
 ## How to use
 
@@ -63,10 +71,9 @@ isbn="978-3-031-31975-4"
 ## Tested on
 
 [![Ubuntu badge](https://img.shields.io/badge/Ubuntu-24.04-cc3300?style=for-the-badge&logo=ubuntu)](https://www.releases.ubuntu.com/24.04/)
-[![GPU badge](https://img.shields.io/badge/GPU-T4-76B900?style=for-the-badge&logo=nvidia)](https://developer.nvidia.com)
-
-
-[![Arch badge](https://img.shields.io/badge/arch-gray?style=for-the-badge&logo=archlinux)](https://archlinux.org/)
 [![Conda badge](https://img.shields.io/badge/conda-24.9.2-339933?style=for-the-badge&logo=anaconda)](https://docs.conda.io/projects/conda/en/24.9.x/)
+
+
+[![GPU badge](https://img.shields.io/badge/GPU-T4-76B900?style=for-the-badge&logo=nvidia)](https://developer.nvidia.com)
 [![Intel badge](https://img.shields.io/badge/CPU-%20Xeon%202.20GHZ-blue?style=for-the-badge&logo=intel)](https://ark.intel.com/content/www/fr/fr/ark/products/196449/intel-core-i7-10510u-processor-8m-cache-up-to-4-90-ghz.html)
 
